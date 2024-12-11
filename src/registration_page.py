@@ -1,14 +1,11 @@
+# src/registration_page.py
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import time
-from .drive_manager import DriveManager
-from .inventory_manager import (
-    add_new_probe,
-    get_next_serial_number,
-    save_inventory
-)
+from .inventory_manager import InventoryManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,33 +29,10 @@ SERVICE_LIFE = {
 
 def registration_page():
     """Main page for probe registration"""
-    # Initialize inventory if not exists
-    if 'inventory' not in st.session_state:
-        st.session_state.inventory = pd.DataFrame(columns=[
-            "Serial Number", "Type", "Manufacturer", "KETOS P/N",
-            "Mfg P/N", "Next Calibration", "Status", "Entry Date",
-            "Last Modified", "Status Color", "Change Date", "Calibration Data"
-        ])
-
-    # Sidebar for Drive settings
-    with st.sidebar:
-        st.markdown("### Google Drive Settings")
-        if 'drive_folder_id' in st.session_state:
-            st.success(f"✅ Using folder ID: {st.session_state['drive_folder_id']}")
-            if st.button("Test Folder Access"):
-                drive_manager = st.session_state.get('drive_manager')
-                if drive_manager and drive_manager.verify_folder_access(st.session_state['drive_folder_id']):
-                    st.success("✅ Folder access verified!")
-                else:
-                    st.error("❌ Could not access folder. Check permissions.")
-
-            if st.button("Upload or Update Inventory"):
-                if load_inventory_from_drive():
-                    st.success("✅ Inventory updated successfully from Google Drive!")
-                else:
-                    st.error("❌ Failed to update inventory. Please check your settings.")
-        else:
-            st.warning("⚠️ Google Drive is not configured.")
+    # Initialize inventory manager if not exists
+    if 'inventory_manager' not in st.session_state:
+        st.session_state.inventory_manager = InventoryManager()
+        st.session_state.inventory_manager.initialize_inventory()
 
     # Title
     st.markdown('<h1 style="font-family: Arial; color: #0071ba;">📋 Probe Registration</h1>', unsafe_allow_html=True)
@@ -76,7 +50,7 @@ def registration_page():
     # Generate Serial Number
     service_years = SERVICE_LIFE.get(probe_type, 2)
     expire_date = manufacturing_date + timedelta(days=service_years * 365)
-    serial_number = get_next_serial_number(probe_type, manufacturing_date)
+    serial_number = st.session_state.inventory_manager.get_next_serial_number(probe_type, manufacturing_date)
     
     # Display Serial Number with Print Button
     col1, col2 = st.columns([3, 1])
@@ -128,12 +102,10 @@ def registration_page():
                             </body>
                         </html>
                     `;
-                    
                     const frame = document.getElementById('printFrame');
                     frame.contentWindow.document.open();
                     frame.contentWindow.document.write(content);
                     frame.contentWindow.document.close();
-                    
                     setTimeout(() => {{
                         frame.contentWindow.focus();
                         frame.contentWindow.print();
@@ -148,82 +120,33 @@ def registration_page():
             st.error("Please fill in all required fields.")
             return
 
-        # Prepare and save probe data
+        # Prepare probe data
         probe_data = {
             "Serial Number": serial_number,
             "Type": probe_type,
             "Manufacturer": manufacturer,
             "KETOS P/N": ketos_part_number,
             "Mfg P/N": manufacturer_part_number,
-            "Status": "Pending Calibration",
+            "Status": "Instock",
             "Entry Date": datetime.now().strftime("%Y-%m-%d"),
             "Last Modified": datetime.now().strftime("%Y-%m-%d"),
             "Change Date": datetime.now().strftime("%Y-%m-%d"),
-            "Calibration Data": {}  # Empty calibration data
+            "Calibration Data": {}
         }
 
-        success = add_new_probe(probe_data)
+        success = st.session_state.inventory_manager.add_new_probe(probe_data)
         if success:
             st.success(f"✅ Probe {serial_number} registered successfully!")
-            if 'drive_manager' in st.session_state and 'drive_folder_id' in st.session_state:
-                if st.session_state.drive_manager.save_to_drive(st.session_state.inventory, st.session_state.drive_folder_id):
-                    st.success("✅ Inventory saved to Google Drive.")
-                    st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                else:
-                    st.warning("⚠️ Failed to save to Google Drive. Data saved locally.")
-            else:
-                st.warning("⚠️ Google Drive not configured. Data saved locally.")
+            st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             time.sleep(1)  # Delay for user feedback
             st.rerun()
         else:
             st.error("❌ Failed to register probe.")
 
-def load_inventory_from_drive():
-    """Load the inventory CSV from Google Drive into the app's session state."""
-    try:
-        drive_manager = st.session_state.get("drive_manager")
-        folder_id = st.session_state.get("drive_folder_id")
-
-        if not drive_manager:
-            st.error("❌ Drive Manager is not initialized. Please check your Google Drive setup.")
-            return False
-
-        if not folder_id:
-            st.error("❌ Google Drive folder ID is not set. Please configure your settings.")
-            return False
-
-        # Download the file from Google Drive
-        st.info("📂 Attempting to load the inventory CSV from Google Drive...")
-        file_content = drive_manager.download_inventory_csv(folder_id, "wbpms_inventory_2024.csv")
-
-        # Parse the CSV content
-        existing_inventory = pd.read_csv(file_content)
-
-        # Merge with session state inventory, avoiding duplicates
-        if 'inventory' in st.session_state and not st.session_state.inventory.empty:
-            st.session_state.inventory = pd.concat(
-                [st.session_state.inventory, existing_inventory]
-            ).drop_duplicates(subset="Serial Number", keep="last")
-        else:
-            st.session_state.inventory = existing_inventory
-
-        return True
-    except FileNotFoundError:
-        st.warning("⚠️ Inventory file not found. A new file will be created.")
-        st.session_state.inventory = pd.DataFrame(columns=[
-            "Serial Number", "Type", "Manufacturer", "KETOS P/N",
-            "Mfg P/N", "Next Calibration", "Status", "Entry Date",
-            "Last Modified", "Change Date", "Calibration Data"
-        ])
-        return True
-    except pd.errors.EmptyDataError:
-        st.warning("⚠️ Inventory file is empty. Starting with a new inventory.")
-        st.session_state.inventory = pd.DataFrame(columns=[
-            "Serial Number", "Type", "Manufacturer", "KETOS P/N",
-            "Mfg P/N", "Next Calibration", "Status", "Entry Date",
-            "Last Modified", "Change Date", "Calibration Data"
-        ])
-        return True
-    except Exception as e:
-        st.error(f"❌ Failed to load inventory. Error: {e}")
-        return False
+    # Connection Status
+    if 'last_save_time' in st.session_state:
+        st.sidebar.markdown(f"""
+            <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-top: 1rem;'>
+                <p>📊 Last Sync: {st.session_state['last_save_time']}</p>
+            </div>
+        """, unsafe_allow_html=True)
