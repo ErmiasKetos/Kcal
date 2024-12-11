@@ -1,0 +1,37 @@
+/* Card Styling */
+.card {
+    padding: 15px;
+    background-color: #f0f8ff;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Section Headers */
+.section-header {
+    font-size: 20px;
+    font-weight: bold;
+    color: #0071ba;
+    margin-bottom: 10px;
+}
+/* Main card styling */
+.card {
+    border: 1px solid #0071ba;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+/* Sub-card styling */
+.sub-card {
+    background-color: #f8f9fa;
+    border: 1px solid #ccc;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+/* Headings */
+h1, h2, h3, h4 {
+    font-family: Arial, sans-serif;
+}
