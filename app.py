@@ -20,6 +20,15 @@ from src.calibration_page import calibration_page
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def initialize_session_state():
+    """Initialize session state variables"""
+    if 'username' not in st.session_state:
+        st.session_state.username = None
+    if 'password_correct' not in st.session_state:
+        st.session_state.password_correct = False
+    if 'inventory_manager' not in st.session_state:
+        st.session_state.inventory_manager = None
+
 # Custom CSS (after set_page_config)
 st.markdown("""
 <style>
@@ -129,14 +138,6 @@ def check_password():
     
     return st.session_state["password_correct"]
 
-def initialize_session_state():
-    """Initialize session state variables"""
-    if 'username' not in st.session_state:
-        st.session_state.username = None
-    if 'password_correct' not in st.session_state:
-        st.session_state.password_correct = False
-    if 'inventory_manager' not in st.session_state:
-        st.session_state.inventory_manager = None
 
 def main():
     # Initialize session state at the start
