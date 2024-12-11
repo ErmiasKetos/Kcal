@@ -1,112 +1,171 @@
+# src/dashboard.py
+
 import streamlit as st
-import pandas as pd
+import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
-from .drive_manager import DriveManager
-from .inventory_manager import initialize_inventory, save_inventory
+import pandas as pd
+from .inventory_manager import InventoryManager, STATUS_COLORS
 
-# Initialize inventory in session state
-initialize_inventory()
+def create_status_chart(inventory_df):
+    """Create a status distribution chart."""
+    status_counts = inventory_df['Status'].value_counts()
+    
+    fig = go.Figure(data=[
+        go.Pie(
+            labels=status_counts.index,
+            values=status_counts.values,
+            hole=.4,
+            marker=dict(colors=[
+                STATUS_COLORS['Instock'],
+                STATUS_COLORS['Calibrated'],
+                STATUS_COLORS['Shipped'],
+                STATUS_COLORS['Scraped']
+            ])
+        )
+    ])
+    
+    fig.update_layout(
+        title="Probe Status Distribution",
+        showlegend=True,
+        width=400,
+        height=400
+    )
+    
+    return fig
 
-def load_data():
-    """Fetch and preprocess inventory data."""
-    if 'inventory' in st.session_state:
-        return st.session_state.inventory
-    else:
-        st.warning("⚠️ No inventory data found.")
-        return pd.DataFrame(columns=[
-            "Serial Number", "Type", "Manufacturer", "KETOS P/N",
-            "Mfg P/N", "Next Calibration", "Status", "Entry Date",
-            "Last Modified", "Change Date"
-        ])
+def create_probe_type_chart(inventory_df):
+    """Create a probe type distribution chart."""
+    type_counts = inventory_df['Type'].value_counts()
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            x=type_counts.index,
+            y=type_counts.values,
+            marker_color='#0071ba'
+        )
+    ])
+    
+    fig.update_layout(
+        title="Probe Type Distribution",
+        xaxis_title="Probe Type",
+        yaxis_title="Count",
+        width=600,
+        height=400
+    )
+    
+    return fig
+
+def create_timeline_chart(inventory_df):
+    """Create a timeline chart of probe registrations."""
+    df = inventory_df.copy()
+    df['Entry Date'] = pd.to_datetime(df['Entry Date'])
+    daily_counts = df.groupby('Entry Date').size().reset_index(name='count')
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=daily_counts['Entry Date'],
+        y=daily_counts['count'],
+        mode='lines+markers',
+        line=dict(color='#0071ba'),
+        name='Registrations'
+    ))
+    
+    fig.update_layout(
+        title="Probe Registration Timeline",
+        xaxis_title="Date",
+        yaxis_title="Number of Registrations",
+        width=800,
+        height=400
+    )
+    
+    return fig
 
 def render_dashboard():
-    """Render the dynamic dashboard."""
-    st.title("📊 Inventory Dashboard")
-    inventory = load_data()
-
-    if inventory.empty:
-        st.info("No data available. Add probes to the inventory to populate the dashboard.")
-        return
-
-    # Summary Section
-    st.markdown("### Summary")
-    col1, col2, col3 = st.columns(3)
+    """Render the main dashboard."""
+    st.title("🎯 Probe Management Dashboard")
+    
+    # Initialize inventory manager if needed
+    if 'inventory_manager' not in st.session_state:
+        st.session_state.inventory_manager = InventoryManager()
+        st.session_state.inventory_manager.initialize_inventory()
+    
+    # Get current inventory
+    inventory_df = st.session_state.inventory
+    
+    # Top metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
-        st.metric("Total Probes", len(inventory))
+        total_probes = len(inventory_df)
+        st.metric("Total Probes", total_probes)
+        
     with col2:
-        calibration_due = len(inventory[inventory['Next Calibration'] <= datetime.now().strftime('%Y-%m-%d')])
-        st.metric("Calibration Due", calibration_due)
+        active_probes = len(inventory_df[inventory_df['Status'].isin(['Instock', 'Calibrated'])])
+        st.metric("Active Probes", active_probes)
+        
     with col3:
-        st.metric("Instock Probes", len(inventory[inventory['Status'] == 'Instock']))
-
-    # Filters
-    st.markdown("### Filters")
-    col1, col2, col3 = st.columns(3)
+        shipped_probes = len(inventory_df[inventory_df['Status'] == 'Shipped'])
+        st.metric("Shipped Probes", shipped_probes)
+        
+    with col4:
+        scraped_probes = len(inventory_df[inventory_df['Status'] == 'Scraped'])
+        st.metric("Scraped Probes", scraped_probes)
+    
+    # Charts
+    col1, col2 = st.columns([1, 1.5])
+    
     with col1:
-        probe_type = st.multiselect("Probe Type", inventory['Type'].unique(), default=inventory['Type'].unique())
-    with col2:
-        status_filter = st.multiselect("Status", inventory['Status'].unique(), default=inventory['Status'].unique())
-    with col3:
-        date_filter = st.date_input("Calibration Before", datetime.now() + timedelta(days=30))
-
-    filtered_inventory = inventory[
-        (inventory['Type'].isin(probe_type)) &
-        (inventory['Status'].isin(status_filter)) &
-        (pd.to_datetime(inventory['Next Calibration']) <= pd.to_datetime(date_filter))
-    ]
-
-    # Charts Section
-    st.markdown("### Visualizations")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        probe_count_chart = px.bar(
-            filtered_inventory.groupby('Type')['Serial Number'].count().reset_index(),
-            x='Type',
-            y='Serial Number',
-            title="Probes by Type",
-            labels={"Serial Number": "Count", "Type": "Probe Type"}
-        )
-        st.plotly_chart(probe_count_chart, use_container_width=True)
-
-    with col2:
-        status_chart = px.pie(
-            filtered_inventory,
-            names='Status',
-            title="Probes by Status",
-            hole=0.4
-        )
+        status_chart = create_status_chart(inventory_df)
         st.plotly_chart(status_chart, use_container_width=True)
-
-    # Table Section
-    st.markdown("### Inventory Table")
-    st.dataframe(filtered_inventory, use_container_width=True)
-
-    # Action Section
-    st.markdown("### Actions")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Sync with Google Drive"):
-            drive_manager = st.session_state.get("drive_manager")
-            folder_id = st.session_state.get("drive_folder_id")
-            if drive_manager and folder_id:
-                if drive_manager.save_to_drive(inventory, folder_id):
-                    st.success("✅ Inventory synced successfully with Google Drive!")
-                else:
-                    st.error("⚠️ Failed to sync inventory with Google Drive.")
-            else:
-                st.warning("⚠️ Google Drive not configured.")
-
+    
     with col2:
-        csv = filtered_inventory.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download Filtered Inventory",
-            data=csv,
-            file_name=f"filtered_inventory_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
+        probe_type_chart = create_probe_type_chart(inventory_df)
+        st.plotly_chart(probe_type_chart, use_container_width=True)
+    
+    # Timeline
+    timeline_chart = create_timeline_chart(inventory_df)
+    st.plotly_chart(timeline_chart, use_container_width=True)
+    
+    # Recent Activity
+    st.subheader("Recent Activity")
+    recent_df = inventory_df.sort_values('Last Modified', ascending=False).head(5)
+    
+    for _, row in recent_df.iterrows():
+        with st.container():
+            st.markdown(f"""
+            <div style="padding: 10px; border-left: 4px solid #0071ba; margin: 5px 0; background-color: #f8f9fa;">
+                <strong>{row['Serial Number']}</strong> - {row['Type']}<br>
+                Status: <span style="color: {STATUS_COLORS[row['Status']]}">{row['Status']}</span><br>
+                Last Modified: {row['Last Modified']}
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Upcoming Calibrations
+    st.subheader("Upcoming Calibrations")
+    if 'Next Calibration' in inventory_df.columns:
+        upcoming_df = inventory_df[
+            (inventory_df['Status'] == 'Calibrated') & 
+            (pd.to_datetime(inventory_df['Next Calibration']) <= datetime.now() + timedelta(days=30))
+        ].sort_values('Next Calibration')
+        
+        if not upcoming_df.empty:
+            for _, row in upcoming_df.head(5).iterrows():
+                days_until = (pd.to_datetime(row['Next Calibration']) - datetime.now()).days
+                st.markdown(f"""
+                <div style="padding: 10px; border-left: 4px solid #ffc107; margin: 5px 0; background-color: #fff3cd;">
+                    <strong>{row['Serial Number']}</strong> - {row['Type']}<br>
+                    Next Calibration: {row['Next Calibration']} ({days_until} days remaining)
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No upcoming calibrations in the next 30 days")
 
-# Run the dashboard
-render_dashboard()
+    # Connection Status
+    if st.session_state.inventory_manager.verify_connection():
+        st.sidebar.success("✅ Google Sheets Connected")
+    else:
+        st.sidebar.error("❌ Google Sheets Disconnected")
+
+if __name__ == "__main__":
+    render_dashboard()
