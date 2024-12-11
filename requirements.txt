@@ -1,0 +1,11 @@
+streamlit
+pandas
+datetime
+google-auth-oauthlib
+google-api-python-client
+PyJWT
+pydrive
+streamlit-authenticator
+python-dotenv
+plotly 
+
