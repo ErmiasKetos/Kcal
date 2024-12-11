@@ -3,14 +3,7 @@ import pandas as pd
 import time
 import json
 from datetime import datetime
-from .inventory_manager import (
-    initialize_inventory,
-    get_filtered_inventory,
-    style_inventory_dataframe,
-    update_probe_status,
-    save_inventory,
-    STATUS_COLORS
-)
+from .inventory_manager import InventoryManager, STATUS_COLORS
 
 def display_calibration_details(probe_data):
     """Display detailed calibration information in the inventory review."""
@@ -41,18 +34,18 @@ def display_calibration_details(probe_data):
                             st.write(f"- Calibrated: {calibration_data.get(f'{buffer_label}_calibrated', 'N/A')} pH")
                             st.write("mV Measurements:")
                             st.write(f"- Initial: {calibration_data.get(f'{buffer_label}_initial_mv', 'N/A')} mV")
-                            st.write(f"- Calibrated: {calibration_data.get(f'{buffer_label}_calibrated_mv', 'N/A')} mV")
         except Exception as e:
             st.error(f"Error displaying calibration data: {str(e)}")
-
 
 def inventory_review_page():
     """Display and manage inventory"""
     st.markdown("<h2 style='color: #0071ba;'>Inventory Review</h2>", unsafe_allow_html=True)
     
-    # Initialize inventory if needed
-    initialize_inventory()
-    
+    # Initialize inventory manager if not exists
+    if 'inventory_manager' not in st.session_state:
+        st.session_state.inventory_manager = InventoryManager()
+        st.session_state.inventory_manager.initialize_inventory()
+
     # Status filter with added 'Calibrated' status
     status_filter = st.selectbox(
         "Filter by Status",
@@ -60,7 +53,7 @@ def inventory_review_page():
     )
     
     # Get filtered inventory
-    filtered_inventory = get_filtered_inventory(status_filter)
+    filtered_inventory = st.session_state.inventory_manager.get_filtered_inventory(status_filter)
     
     # Display inventory with styling
     if not filtered_inventory.empty:
@@ -77,7 +70,7 @@ def inventory_review_page():
 
         st.markdown("### Inventory Data")
         st.dataframe(
-            style_inventory_dataframe(filtered_inventory),
+            st.session_state.inventory_manager.style_inventory_dataframe(filtered_inventory),
             height=400,
             use_container_width=True
         )
@@ -103,7 +96,6 @@ def inventory_review_page():
         col1, col2 = st.columns(2)
         
         with col1:
-            # Add search functionality for probe selection
             search_term = st.text_input(
                 "Search Probe (Serial Number or Type)",
                 key="probe_search_update"
@@ -124,14 +116,12 @@ def inventory_review_page():
                     st.session_state.inventory['Serial Number'] == selected_probe
                 ].iloc[0]
                 
-                # Show probe details
                 st.markdown("#### Probe Details")
                 st.write(f"Type: {probe_info['Type']}")
                 st.write(f"Current Status: {probe_info['Status']}")
                 if 'Next Calibration' in probe_info:
                     st.write(f"Next Calibration: {probe_info['Next Calibration']}")
                     
-                # Add calibration details display
                 if probe_info['Type'] == "pH Probe":
                     with st.expander("View Calibration Details"):
                         display_calibration_details(probe_info)
@@ -139,15 +129,12 @@ def inventory_review_page():
         with col2:
             if selected_probe and selected_probe != "No matches found":
                 current_status = probe_info['Status']
-                
-                # Status update with validation
                 new_status = st.selectbox(
                     "New Status",
                     ["Instock", "Calibrated", "Shipped", "Scraped"],
                     index=["Instock", "Calibrated", "Shipped", "Scraped"].index(current_status)
                 )
                 
-                # Add status change rules
                 status_warning = None
                 status_change_allowed = True
                 
@@ -161,41 +148,24 @@ def inventory_review_page():
                 if status_warning:
                     st.warning(status_warning)
                 
-                # Preview color for selected status
                 st.markdown(
                     f'<div style="background-color: {STATUS_COLORS[new_status]}; '
                     f'padding: 10px; border-radius: 5px; margin-top: 10px;">'
                     f'Selected status: {new_status}</div>',
                     unsafe_allow_html=True
                 )
-        
-                # Update button with confirmation
+                
                 if st.button("Update Status") and status_change_allowed:
                     if new_status != current_status:
-                        with st.spinner("Updating status..."):
-                            if update_probe_status(selected_probe, new_status):
-                                st.success(f"✅ Updated status of {selected_probe} to {new_status}")
-                                if 'drive_manager' in st.session_state:
-                                    st.success("✅ Changes saved to both local inventory and Google Drive")
-                                else:
-                                    st.success("✅ Changes saved to local inventory")
-                                time.sleep(1)  # Give time for the user to see the success message
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to update status. Please try again.")
+                        success = st.session_state.inventory_manager.update_probe_status(selected_probe, new_status)
+                        if success:
+                            st.success(f"✅ Updated status of {selected_probe} to {new_status}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to update status. Please try again.")
                     else:
                         st.info("ℹ️ No status change selected")
-                
-                # Add last save information
-                if 'last_save_time' in st.session_state:
-                    st.markdown(
-                        f"""
-                        <div style='padding: 10px; background-color: #f0f2f6; border-radius: 5px; margin-top: 10px;'>
-                            📝 Last saved: {st.session_state['last_save_time']}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
 
     # Download section
     st.markdown("### Download Inventory")
@@ -228,7 +198,9 @@ def inventory_review_page():
             "Total Records": len(st.session_state.inventory),
             "Filtered Records": len(filtered_inventory),
             "Last Save": st.session_state.get('last_save_time', 'Never'),
-            "Drive Status": 'drive_manager' in st.session_state,
+            "Sheets Status": '✅ Connected' if st.session_state.inventory_manager.verify_connection() else '❌ Disconnected',
             "Status Distribution": dict(st.session_state.inventory['Status'].value_counts())
         })
 
+if __name__ == "__main__":
+    inventory_review_page()
