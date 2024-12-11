@@ -206,8 +206,8 @@ def check_password():
         """Checks whether a password entered by the user is correct."""
         if st.session_state["username"].endswith("@ketos.co"):
             if (
-                st.session_state["username"] in st.secrets.credentials
-                and st.session_state["password"] == st.secrets.credentials[st.session_state["username"]]
+                st.session_state["username"] in st.secrets["credentials"]
+                and st.session_state["password"] == st.secrets["credentials"][st.session_state["username"]]
             ):
                 st.session_state["password_correct"] = True
                 del st.session_state["password"]  # Don't store password
@@ -223,29 +223,9 @@ def check_password():
     if "password_correct" not in st.session_state:
         # First run, show input for password
         st.markdown("""
-            <style>
-                .login-container {
-                    max-width: 400px;
-                    margin: 0 auto;
-                    padding: 2rem;
-                    background: white;
-                    border-radius: 10px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                }
-                .login-header {
-                    text-align: center;
-                    color: #0071ba;
-                    margin-bottom: 2rem;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-            <div class='login-container'>
-                <div class='login-header'>
-                    <h1>🔬 KETOS CalMS</h1>
-                    <p>Probe Management System</p>
-                </div>
+            <div style='text-align: center; padding: 2rem;'>
+                <h1 style='color: #0071ba;'>🔬 KETOS CalMS</h1>
+                <p>Probe Management System</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -269,15 +249,10 @@ def main():
     if not check_password():
         return
 
-    # Initialize inventory manager if not already initialized
+    # Initialize inventory manager
     if 'inventory_manager' not in st.session_state:
         st.session_state.inventory_manager = InventoryManager()
         st.session_state.inventory_manager.initialize_inventory()
-
-    # Verify Google Sheets connection
-    if not st.session_state.inventory_manager.verify_connection():
-        st.error("❌ Unable to connect to Google Sheets. Please check your connection and try again.")
-        return
 
     # Sidebar navigation
     st.sidebar.title("Navigation")
@@ -286,7 +261,10 @@ def main():
     st.sidebar.markdown(f"""
         <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem;'>
             <p>👤 Logged in as: {st.session_state["username"]}</p>
-            <p>📊 Sheets Status: ✅ Connected</p>
+            <p>📊 Sheets Status: {
+                "✅ Connected" if st.session_state.inventory_manager.verify_connection() 
+                else "❌ Disconnected"
+            }</p>
         </div>
     """, unsafe_allow_html=True)
 
