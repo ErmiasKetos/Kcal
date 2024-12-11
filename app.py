@@ -1,4 +1,12 @@
 import streamlit as st
+# Set page config must be the first Streamlit command
+st.set_page_config(
+    page_title="KETOS CalMS",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 import pandas as pd
 from datetime import datetime
 import logging
@@ -12,7 +20,7 @@ from src.calibration_page import calibration_page
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Custom CSS for professional look
+# Custom CSS (after set_page_config)
 st.markdown("""
 <style>
     /* Main app styling */
@@ -41,26 +49,11 @@ st.markdown("""
         font-weight: 600;
     }
     
-    /* Cards and containers */
-    .stMarkdown div {
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        background: white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        transition: transform 0.2s ease;
-    }
-    
-    .stMarkdown div:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    
-    /* Status indicators */
-    .status-badge {
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-weight: 500;
+    /* Form inputs */
+    .stTextInput > div > div > input {
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+        padding: 0.5rem;
     }
     
     /* Buttons */
@@ -77,52 +70,6 @@ st.markdown("""
     .stButton > button:hover {
         background-color: #005a94;
         box-shadow: 0 4px 8px rgba(0,113,186,0.2);
-        transform: translateY(-1px);
-    }
-    
-    /* Form inputs */
-    .stTextInput > div > div > input {
-        border-radius: 4px;
-        border: 1px solid #ced4da;
-        padding: 0.5rem;
-        transition: border-color 0.2s ease;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #0071ba;
-        box-shadow: 0 0 0 2px rgba(0,113,186,0.2);
-    }
-    
-    /* Select boxes */
-    .stSelectbox > div > div {
-        border-radius: 4px;
-        border: 1px solid #ced4da;
-    }
-    
-    /* Metrics */
-    .stMetric {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    /* Data frames */
-    .stDataFrame {
-        border: 1px solid #e9ecef;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 4px;
-        padding: 0.5rem 1rem;
-        background: white;
     }
     
     /* Login form styling */
@@ -133,62 +80,6 @@ st.markdown("""
         background: white;
         border-radius: 10px;
         box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    }
-    
-    .login-header {
-        text-align: center;
-        color: #0071ba;
-        margin-bottom: 2rem;
-    }
-    
-    /* Alert boxes */
-    .element-container .alert {
-        border-radius: 8px;
-        border-left: 4px solid;
-        margin: 1rem 0;
-    }
-    
-    .element-container .alert.success {
-        background-color: #d4edda;
-        border-left-color: #28a745;
-    }
-    
-    .element-container .alert.warning {
-        background-color: #fff3cd;
-        border-left-color: #ffc107;
-    }
-    
-    .element-container .alert.error {
-        background-color: #f8d7da;
-        border-left-color: #dc3545;
-    }
-    
-    /* Plotly chart containers */
-    .plotly-chart-container {
-        background: white;
-        border-radius: 8px;
-        padding: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    /* Expander styling */
-    .streamlit-expanderHeader {
-        background-color: white;
-        border-radius: 8px;
-        border: none;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    /* Status colors */
-    .status-instock { color: #FFD700; }
-    .status-calibrated { color: #32CD32; }
-    .status-shipped { color: #4169E1; }
-    .status-scraped { color: #DC143C; }
-
-    /* Navigation active state */
-    .sidebar .nav-active {
-        background-color: #e9ecef;
-        border-left: 3px solid #0071ba;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -223,9 +114,9 @@ def check_password():
     if "password_correct" not in st.session_state:
         # First run, show input for password
         st.markdown("""
-            <div style='text-align: center; padding: 2rem;'>
-                <h1 style='color: #0071ba;'>🔬 KETOS CalMS</h1>
-                <p>Probe Management System</p>
+            <div class='login-container'>
+                <h1 style='text-align: center; color: #0071ba;'>🔬 KETOS CalMS</h1>
+                <p style='text-align: center;'>Probe Management System</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -239,20 +130,18 @@ def check_password():
     return st.session_state["password_correct"]
 
 def main():
-    st.set_page_config(
-        page_title="KETOS CalMS",
-        page_icon="🔬",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
     if not check_password():
         return
 
-    # Initialize inventory manager
+    # Initialize inventory manager if not already initialized
     if 'inventory_manager' not in st.session_state:
         st.session_state.inventory_manager = InventoryManager()
         st.session_state.inventory_manager.initialize_inventory()
+
+    # Verify Google Sheets connection
+    if not st.session_state.inventory_manager.verify_connection():
+        st.error("❌ Unable to connect to Google Sheets. Please check your connection and try again.")
+        return
 
     # Sidebar navigation
     st.sidebar.title("Navigation")
@@ -261,10 +150,7 @@ def main():
     st.sidebar.markdown(f"""
         <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem;'>
             <p>👤 Logged in as: {st.session_state["username"]}</p>
-            <p>📊 Sheets Status: {
-                "✅ Connected" if st.session_state.inventory_manager.verify_connection() 
-                else "❌ Disconnected"
-            }</p>
+            <p>📊 Sheets Status: ✅ Connected</p>
         </div>
     """, unsafe_allow_html=True)
 
