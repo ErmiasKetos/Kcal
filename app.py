@@ -129,12 +129,24 @@ def check_password():
     
     return st.session_state["password_correct"]
 
+def initialize_session_state():
+    """Initialize session state variables"""
+    if 'username' not in st.session_state:
+        st.session_state.username = None
+    if 'password_correct' not in st.session_state:
+        st.session_state.password_correct = False
+    if 'inventory_manager' not in st.session_state:
+        st.session_state.inventory_manager = None
+
 def main():
+    # Initialize session state at the start
+    initialize_session_state()
+
     if not check_password():
         return
 
     # Initialize inventory manager if not already initialized
-    if 'inventory_manager' not in st.session_state:
+    if not st.session_state.inventory_manager:
         st.session_state.inventory_manager = InventoryManager()
         st.session_state.inventory_manager.initialize_inventory()
 
@@ -146,13 +158,14 @@ def main():
     # Sidebar navigation
     st.sidebar.title("Navigation")
     
-    # Show user info
-    st.sidebar.markdown(f"""
-        <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem;'>
-            <p>👤 Logged in as: {st.session_state["username"]}</p>
-            <p>📊 Sheets Status: ✅ Connected</p>
-        </div>
-    """, unsafe_allow_html=True)
+    # Show user info only if logged in
+    if st.session_state.username:
+        st.sidebar.markdown(f"""
+            <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem;'>
+                <p>👤 Logged in as: {st.session_state.username}</p>
+                <p>📊 Sheets Status: ✅ Connected</p>
+            </div>
+        """, unsafe_allow_html=True)
 
     # Navigation options
     page = st.sidebar.radio(
@@ -162,7 +175,8 @@ def main():
 
     # Logout button
     if st.sidebar.button("Logout"):
-        st.session_state.clear()
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
 
     # Page routing
@@ -183,5 +197,49 @@ def main():
         </div>
     """, unsafe_allow_html=True)
 
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        if st.session_state["username_input"].endswith("@ketos.co"):
+            if (
+                st.session_state["username_input"] in st.secrets["credentials"]
+                and st.session_state["password_input"] == st.secrets["credentials"][st.session_state["username_input"]]
+            ):
+                st.session_state.password_correct = True
+                st.session_state.username = st.session_state["username_input"]
+                del st.session_state["password_input"]  # Don't store password
+                return True
+            else:
+                st.session_state.password_correct = False
+                st.error("😕 User not authorized or incorrect password")
+                return False
+        else:
+            st.error("😕 Please use your @ketos.co email address")
+            return False
+
+    if not st.session_state.get("password_correct", False):
+        # First run, show input for password
+        st.markdown("""
+            <div class='login-container'>
+                <h1 style='text-align: center; color: #0071ba;'>🔬 KETOS CalMS</h1>
+                <p style='text-align: center;'>Probe Management System</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            st.text_input("Username (@ketos.co)", key="username_input")
+            st.text_input("Password", type="password", key="password_input")
+            st.button("Log In", on_click=password_entered)
+        return False
+    
+    return True
+
 if __name__ == "__main__":
+    st.set_page_config(
+        page_title="KETOS CalMS",
+        page_icon="🔬",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     main()
