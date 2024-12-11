@@ -1,185 +1,323 @@
 import streamlit as st
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-from src.dashboard import render_dashboard
-import logging
-import os
+import pandas as pd
 from datetime import datetime
-from src.drive_manager import DriveManager
+import logging
+from src.dashboard import render_dashboard
 from src.inventory_review import inventory_review_page
-from src.inventory_manager import initialize_inventory
-from src.registration_page import registration_page  
-from src.calibration_page import calibration_page   # Updated import
+from src.inventory_manager import InventoryManager
+from src.registration_page import registration_page
+from src.calibration_page import calibration_page
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Default Google Drive folder ID
-DRIVE_FOLDER_ID = "19lHngxB_RXEpr30jpY9_fCaSpl6Z1m1i"
-
-# OAuth 2.0 configuration
-SCOPES = [
-    'openid',
-    'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/userinfo.profile'
-]
-
-# Verify environment variables
-if not os.environ.get("GOOGLE_CLIENT_ID") or not os.environ.get("GOOGLE_CLIENT_SECRET"):
-    raise EnvironmentError("Missing required environment variables: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET")
-
-# Client configuration
-CLIENT_CONFIG = {
-    "web": {
-        "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
-        "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["https://caldash-eoewkytd6u7jyxfm2haaxn.streamlit.app/"],
-        "javascript_origins": ["https://caldash-eoewkytd6u7jyxfm2haaxn.streamlit.app"]
+# Custom CSS for professional look
+st.markdown("""
+<style>
+    /* Main app styling */
+    .stApp {
+        background: linear-gradient(to bottom right, #f8f9fa, #e9ecef);
     }
-}
+    
+    /* Navigation and sidebar */
+    .sidebar .sidebar-content {
+        background-color: #ffffff;
+        border-right: 1px solid #dee2e6;
+    }
+    
+    /* Main content area */
+    .main .block-container {
+        padding: 2rem;
+        background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+        border-radius: 10px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+    }
 
-def init_google_auth():
-    """Initialize Google authentication."""
-    try:
-        # Use updated query_params instead of experimental_get_query_params
-        params = st.query_params
-        if 'code' not in params:
+    /* Headers and text */
+    h1, h2, h3 {
+        color: #0071ba;
+        font-family: 'Arial', sans-serif;
+        font-weight: 600;
+    }
+    
+    /* Cards and containers */
+    .stMarkdown div {
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease;
+    }
+    
+    .stMarkdown div:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Status indicators */
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        background-color: #0071ba;
+        color: white;
+        border-radius: 4px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #005a94;
+        box-shadow: 0 4px 8px rgba(0,113,186,0.2);
+        transform: translateY(-1px);
+    }
+    
+    /* Form inputs */
+    .stTextInput > div > div > input {
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+        padding: 0.5rem;
+        transition: border-color 0.2s ease;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #0071ba;
+        box-shadow: 0 0 0 2px rgba(0,113,186,0.2);
+    }
+    
+    /* Select boxes */
+    .stSelectbox > div > div {
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+    }
+    
+    /* Metrics */
+    .stMetric {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Data frames */
+    .stDataFrame {
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 4px;
+        padding: 0.5rem 1rem;
+        background: white;
+    }
+    
+    /* Login form styling */
+    .login-container {
+        max-width: 400px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+    
+    .login-header {
+        text-align: center;
+        color: #0071ba;
+        margin-bottom: 2rem;
+    }
+    
+    /* Alert boxes */
+    .element-container .alert {
+        border-radius: 8px;
+        border-left: 4px solid;
+        margin: 1rem 0;
+    }
+    
+    .element-container .alert.success {
+        background-color: #d4edda;
+        border-left-color: #28a745;
+    }
+    
+    .element-container .alert.warning {
+        background-color: #fff3cd;
+        border-left-color: #ffc107;
+    }
+    
+    .element-container .alert.error {
+        background-color: #f8d7da;
+        border-left-color: #dc3545;
+    }
+    
+    /* Plotly chart containers */
+    .plotly-chart-container {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: white;
+        border-radius: 8px;
+        border: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Status colors */
+    .status-instock { color: #FFD700; }
+    .status-calibrated { color: #32CD32; }
+    .status-shipped { color: #4169E1; }
+    .status-scraped { color: #DC143C; }
+
+    /* Navigation active state */
+    .sidebar .nav-active {
+        background-color: #e9ecef;
+        border-left: 3px solid #0071ba;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Add default credentials to secrets if not present
+if 'credentials' not in st.secrets:
+    st.secrets['credentials'] = {
+        'username': 'admin@ketos.co',
+        'password': 'default_password'  # Replace with your actual default password
+    }
+
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["username"].endswith("@ketos.co"):
+            if (
+                st.session_state["username"] in st.secrets.credentials
+                and st.session_state["password"] == st.secrets.credentials[st.session_state["username"]]
+            ):
+                st.session_state["password_correct"] = True
+                del st.session_state["password"]  # Don't store password
+                return True
+            else:
+                st.session_state["password_correct"] = False
+                st.error("😕 User not authorized or incorrect password")
+                return False
+        else:
+            st.error("😕 Please use your @ketos.co email address")
             return False
 
-        flow = Flow.from_client_config(
-            client_config=CLIENT_CONFIG,
-            scopes=SCOPES,
-            redirect_uri="https://caldash-eoewkytd6u7jyxfm2haaxn.streamlit.app/"
-        )
+    if "password_correct" not in st.session_state:
+        # First run, show input for password
+        st.markdown("""
+            <style>
+                .login-container {
+                    max-width: 400px;
+                    margin: 0 auto;
+                    padding: 2rem;
+                    background: white;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                .login-header {
+                    text-align: center;
+                    color: #0071ba;
+                    margin-bottom: 2rem;
+                }
+            </style>
+        """, unsafe_allow_html=True)
 
-        flow.fetch_token(code=params['code'])
-        st.session_state['credentials'] = flow.credentials
+        st.markdown("""
+            <div class='login-container'>
+                <div class='login-header'>
+                    <h1>🔬 KETOS CalMS</h1>
+                    <p>Probe Management System</p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # Initialize Drive manager
-        if 'drive_manager' not in st.session_state:
-            st.session_state.drive_manager = DriveManager()
-        st.session_state.drive_manager.authenticate(flow.credentials)
-        
-        # Initialize inventory
-        if 'inventory' not in st.session_state:
-            initialize_inventory()
-
-        # Set authenticated state
-        st.session_state['authenticated'] = True
-        st.session_state['drive_folder_id'] = DRIVE_FOLDER_ID
-
-        # Clear query parameters
-        st.query_params.clear()
-        
-        logger.info("Authentication successful")
-        return True
-
-    except Exception as e:
-        logger.error(f"Authentication failed: {str(e)}")
-        if 'credentials' in st.session_state:
-            del st.session_state['credentials']
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            st.text_input("Username (@ketos.co)", key="username")
+            st.text_input("Password", type="password", key="password")
+            st.button("Log In", on_click=password_entered)
         return False
-
-def check_user_auth():
-    """Check and handle user authentication"""
-    if 'credentials' not in st.session_state:
-        try:
-            flow = Flow.from_client_config(
-                client_config=CLIENT_CONFIG,
-                scopes=SCOPES,
-                redirect_uri="https://caldash-eoewkytd6u7jyxfm2haaxn.streamlit.app/"
-            )
-            authorization_url, state = flow.authorization_url(
-                access_type='offline',
-                include_granted_scopes='true',
-                prompt='consent'
-            )
-            st.session_state['oauth_state'] = state
-            st.markdown(f"[Login with Google]({authorization_url})")
-            return False
-        except Exception as e:
-            logger.error(f"Auth setup error: {str(e)}")
-            st.error(f"Auth setup error: {str(e)}")
-            return False
-    return True
+    
+    return st.session_state["password_correct"]
 
 def main():
-    try:
-        st.sidebar.title("CalMS")
-
-        # Handle OAuth flow
-        params = st.query_params
-        if 'code' in params and 'authenticated' not in st.session_state:
-            if init_google_auth():
-                st.rerun()
-            return
-
-        # Check authentication
-        if not check_user_auth():
-            st.write("Please log in to access the application.")
-            return
-
-        # Validate user email domain
-        try:
-            user_info_service = build('oauth2', 'v2', credentials=st.session_state['credentials'])
-            user_info = user_info_service.userinfo().get().execute()
-
-            if user_info['email'].endswith('@ketos.co'):
-                st.sidebar.text(f"Logged in as: {user_info['name']}")
-            else:
-                st.error("Access denied. Please use your @ketos.co email.")
-                if st.button("Logout"):
-                    st.session_state.clear()
-                    st.rerun()
-                return
-        except Exception as e:
-            logger.error(f"Error fetching user info: {str(e)}")
-            st.error("Authentication error. Please try logging in again.")
-            st.session_state.clear()
-            st.rerun()
-            return
-
-        # Debug information
-        with st.sidebar.expander("Debug Info", expanded=False):
-            st.write({
-                "Authentication Status": 'credentials' in st.session_state,
-                "Drive Connected": 'drive_manager' in st.session_state,
-                "Inventory Loaded": 'inventory' in st.session_state,
-                "Email": user_info.get('email', 'Not available')
-            })
-
-        # Updated sidebar navigation with separate registration and calibration pages
-        page = st.sidebar.radio(
-            "Navigate to",
-            ["Dashboard", "Probe Registration", "Probe Calibration", "Inventory Review"]
-        )
-
-        # Page routing
-        if page == "Probe Registration":
-            registration_page()
-        elif page == "Dashboard":
-            render_dashboard()
-        elif page == "Probe Registration":
-            registration_page()
-        elif page == "Probe Calibration":
-            calibration_page()
-        elif page == "Inventory Review":
-            inventory_review_page()
-
-    except Exception as e:
-        logger.error(f"Application error: {str(e)}")
-        st.error(f"An error occurred: {str(e)}")
-
-if __name__ == "__main__":
     st.set_page_config(
-        page_title="Probe Management System",
+        page_title="KETOS CalMS",
+        page_icon="🔬",
         layout="wide",
         initial_sidebar_state="expanded"
     )
+
+    if not check_password():
+        return
+
+    # Initialize inventory manager if not already initialized
+    if 'inventory_manager' not in st.session_state:
+        st.session_state.inventory_manager = InventoryManager()
+        st.session_state.inventory_manager.initialize_inventory()
+
+    # Verify Google Sheets connection
+    if not st.session_state.inventory_manager.verify_connection():
+        st.error("❌ Unable to connect to Google Sheets. Please check your connection and try again.")
+        return
+
+    # Sidebar navigation
+    st.sidebar.title("Navigation")
+    
+    # Show user info
+    st.sidebar.markdown(f"""
+        <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem;'>
+            <p>👤 Logged in as: {st.session_state["username"]}</p>
+            <p>📊 Sheets Status: ✅ Connected</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Navigation options
+    page = st.sidebar.radio(
+        "Select Page",
+        ["Dashboard", "Probe Registration", "Probe Calibration", "Inventory Review"]
+    )
+
+    # Logout button
+    if st.sidebar.button("Logout"):
+        st.session_state.clear()
+        st.rerun()
+
+    # Page routing
+    if page == "Dashboard":
+        render_dashboard()
+    elif page == "Probe Registration":
+        registration_page()
+    elif page == "Probe Calibration":
+        calibration_page()
+    elif page == "Inventory Review":
+        inventory_review_page()
+
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("""
+        <div style='text-align: center; color: #666;'>
+            <small>Version 1.0.0 | Last Updated: 2024-12</small>
+        </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
     main()
