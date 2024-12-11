@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 SHEET_ID = "1J9VE94Ja863EyPNZGOEes1EuILg0FsGC58bLwKiQlbc"
-WORKSHEET_NAME = "Inventory"
+WORKSHEET_NAME = "Sheet1"
 
 # Status color mapping
 STATUS_COLORS = {
@@ -41,7 +41,31 @@ class InventoryManager:
                 ]
             )
             self.client = gspread.authorize(credentials)
-            self.worksheet = self.client.open_by_key(self.sheet_id).worksheet(self.worksheet_name)
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+    
+            # Try to get the worksheet, create if it doesn't exist
+            try:
+                self.worksheet = spreadsheet.worksheet(self.worksheet_name)
+            except gspread.exceptions.WorksheetNotFound:
+                # Create new worksheet
+                self.worksheet = spreadsheet.add_worksheet(
+                    title=self.worksheet_name,
+                    rows=1000,
+                    cols=20
+                )
+                # Initialize headers
+                headers = [
+                    "Serial Number", "Type", "Manufacturer", "KETOS P/N",
+                    "Mfg P/N", "Next Calibration", "Status", "Entry Date",
+                    "Last Modified", "Change Date", "Calibration Data"
+                ]
+                self.worksheet.append_row(headers)
+                # Format header row
+                self.worksheet.format('A1:K1', {
+                    "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
+                    "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
+                })
+    
             logger.info("Successfully initialized Google Sheets connection")
         except Exception as e:
             logger.error(f"Failed to initialize sheets connection: {str(e)}")
