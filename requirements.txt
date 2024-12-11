@@ -1,11 +1,8 @@
-streamlit
-pandas
-datetime
+streamlit>=1.24.0
+pandas>=1.5.0
+plotly
+gspread
+google-auth
 google-auth-oauthlib
 google-api-python-client
-PyJWT
-pydrive
-streamlit-authenticator
 python-dotenv
-plotly 
-
