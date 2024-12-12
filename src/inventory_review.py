@@ -223,6 +223,7 @@ def render_advanced_filters(df):
 
     return filtered_df
 
+
 def inventory_review_page():
     """Enhanced inventory review page."""
     st.markdown("# 📦 Inventory Review")
@@ -240,15 +241,8 @@ def inventory_review_page():
     # Inventory Statistics
     render_inventory_stats(df)
     
-    # Advanced Filters
-    status_filter, type_filter = render_advanced_filters()
-    
-    # Apply filters
-    filtered_df = df.copy()
-    if status_filter:
-        filtered_df = filtered_df[filtered_df['Status'].isin(status_filter)]
-    if type_filter:
-        filtered_df = filtered_df[filtered_df['Type'].isin(type_filter)]
+    # Apply advanced filters
+    filtered_df = render_advanced_filters(df)
 
     # Search bar
     search_query = st.text_input(
