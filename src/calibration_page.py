@@ -658,6 +658,35 @@ def validate_calibration_data(probe_type, calibration_data):
 
     return errors
 
+def find_probe(serial_number):
+    """Find a probe in the inventory by serial number."""
+    if 'inventory' not in st.session_state:
+        return None
+    
+    inventory_df = st.session_state.inventory
+    probe = inventory_df[inventory_df['Serial Number'] == serial_number]
+    return probe.iloc[0] if not probe.empty else None
+
+def get_searchable_probes():
+    """Get list of searchable probes with their details."""
+    if 'inventory' not in st.session_state:
+        return []
+    
+    inventory_df = st.session_state.inventory
+    searchable_probes = []
+    
+    for _, row in inventory_df.iterrows():
+        probe_info = {
+            'serial': row['Serial Number'],
+            'type': row['Type'],
+            'manufacturer': row['Manufacturer'],
+            'status': row['Status'],
+            'search_text': f"{row['Serial Number']} {row['Type']} {row['Manufacturer']} {row['Status']}"
+        }
+        searchable_probes.append(probe_info)
+    
+    return searchable_probes
+
 def calibration_page():
     """Main page for probe calibration."""
     st.markdown('<h1 style="color: #0071ba;">🔍 Probe Calibration</h1>', unsafe_allow_html=True)
