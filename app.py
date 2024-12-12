@@ -260,6 +260,16 @@ def main():
     # Create sidebar
     create_sidebar()
 
+    # Page routing
+    if st.session_state.get('page') == "Probe Calibration":
+        calibration_page()
+    elif page == "Dashboard":
+        render_dashboard()
+    elif page == "Probe Registration":
+        registration_page()
+    elif page == "Inventory Review":
+        inventory_review_page()
+
     # Main content
     if not st.session_state.get('password_correct', False):
         # Login page
