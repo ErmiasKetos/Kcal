@@ -1,4 +1,9 @@
 import streamlit as st
+st.set_page_config(
+    page_title="Probe Management Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
