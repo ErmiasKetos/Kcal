@@ -450,6 +450,20 @@ def render_ph_calibration():
                 if abs(ph_data['offset_mv']) > 30:
                     st.warning("⚠️ Offset is outside optimal range (±30 mV)")
 
+            # Add slope field for pH 10
+            if buffer['name'] == "pH 10":
+                ph_data['slope_mv_10'] = st.number_input(
+                    "Slope (mV/pH)",
+                    min_value=-65.0,
+                    max_value=-45.0,
+                    value=-59.2,
+                    step=0.1,
+                    help="Theoretical value is -59.2 mV/pH at 25°C",
+                    key="slope_10"
+                )
+                if ph_data['slope_mv_10'] > -50 or ph_data['slope_mv_10'] < -62:
+                    st.warning("⚠️ pH 10 Slope is outside optimal range (-62 to -50 mV/pH)")
+
             # Add slope field after pH 4 measurements
             if buffer['name'] == "pH 4":
                 ph_data['slope_mv'] = st.number_input(
