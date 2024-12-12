@@ -245,12 +245,67 @@ def render_advanced_filters(df):
 
     return filtered_df
 
+def render_status_legend():
+    """Render an improved status color legend with descriptions."""
+    st.markdown("""
+        <style>
+        .status-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .status-item {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .status-desc {
+            font-size: 0.9em;
+            color: #666;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    status_info = {
+        'Instock': {
+            'color': '#FFD700',  # Gold
+            'desc': 'Probes available for calibration and deployment'
+        },
+        'Calibrated': {
+            'color': '#90EE90',  # Light Green
+            'desc': 'Probes that have been calibrated and are ready for shipping'
+        },
+        'Shipped': {
+            'color': '#87CEEB',  # Sky Blue
+            'desc': 'Probes that have been sent to customers'
+        },
+        'Scraped': {
+            'color': '#FFB6C6',  # Light Red
+            'desc': 'Probes that are no longer in service'
+        }
+    }
+
+    st.markdown('<div class="status-legend">', unsafe_allow_html=True)
+    for status, info in status_info.items():
+        st.markdown(f"""
+            <div class="status-item" style="background-color: {info['color']}20; border-left: 4px solid {info['color']}">
+                <div class="status-title">{status}</div>
+                <div class="status-desc">{info['desc']}</div>
+            </div>
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def inventory_review_page():
-    """Enhanced inventory review page."""
+    """Streamlined inventory review page."""
     st.markdown("# 📦 Inventory Review")
     
-    # Initialize inventory
     if 'inventory_manager' not in st.session_state:
         st.error("Inventory manager not initialized")
         return
@@ -260,136 +315,103 @@ def inventory_review_page():
         st.warning("No inventory data available")
         return
 
-    # Inventory Statistics
-    render_inventory_stats(df)
-    
-    # Apply advanced filters
-    filtered_df = render_advanced_filters(df)
+    # Tabs for different views
+    tab1, tab2, tab3 = st.tabs(["📊 Overview", "📋 Inventory List", "⚙️ Tools"])
 
-    # Search bar
-    search_query = st.text_input(
-        "🔍 Search by Serial Number, Type, or Manufacturer",
-        help="Enter any part of the Serial Number, Type, or Manufacturer"
-    )
-    if search_query:
-        search_mask = filtered_df.apply(
-            lambda x: any(
-                search_query.lower() in str(val).lower() 
-                for val in x
+    with tab1:
+        # Render inventory statistics
+        render_inventory_stats(df)
+        
+        # Status legend with descriptions
+        render_status_legend()
+
+    with tab2:
+        # Advanced filters in a clean expandable section
+        filtered_df = render_advanced_filters(df)
+
+        # Clean data display with essential columns
+        essential_columns = [
+            "Serial Number", "Type", "Status", "Entry Date", 
+            "Next Calibration", "Last Modified"
+        ]
+        
+        column_config = {
+            "Serial Number": st.column_config.TextColumn(
+                "Serial Number",
+                help="Unique identifier for the probe",
+                width="medium"
             ),
-            axis=1
-        )
-        filtered_df = filtered_df[search_mask]
-
-    # Display filtered inventory
-    st.markdown("### Inventory Data")
-    
-    # Add column configuration
-    column_config = {
-        "Serial Number": st.column_config.TextColumn(
-            "Serial Number",
-            help="Unique identifier for the probe",
-            width="medium"
-        ),
-        "Type": st.column_config.SelectboxColumn(
-            "Type",
-            help="Type of probe",
-            width="medium",
-            options=["pH Probe", "DO Probe", "ORP Probe", "EC Probe"]
-        ),
-        "Status": st.column_config.SelectboxColumn(
-            "Status",
-            help="Current status of the probe",
-            width="small",
-            options=["Instock", "Calibrated", "Shipped", "Scraped"]
-        ),
-        "Entry Date": st.column_config.TextColumn(
-            "Entry Date",
-            help="Date when the probe was added to inventory",
-            width="small"
-        ),
-        "Next Calibration": st.column_config.TextColumn(
-            "Next Calibration",
-            help="Date when next calibration is due",
-            width="small"
-        ),
-        "Last Modified": st.column_config.TextColumn(
-            "Last Modified",
-            help="Last modification date",
-            width="small"
-        )
-    }
-
-    # Apply custom styling to the dataframe
-    edited_df = st.data_editor(
-        filtered_df,
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="inventory_editor"
-    )
-
-    # Check for changes and save
-    if not edited_df.equals(filtered_df):
-        if st.button("Save Changes"):
-            try:
-                # Update the main inventory with edited values
-                for idx, row in edited_df.iterrows():
-                    if idx in st.session_state.inventory.index:
-                        st.session_state.inventory.loc[idx] = row
-                
-                if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
-                    st.success("✅ Changes saved successfully!")
-                    st.rerun()
-                else:
-                    st.error("Failed to save changes")
-            except Exception as e:
-                st.error(f"Error saving changes: {str(e)}")
-
-    # Export options
-    st.markdown("### Export Options")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("Export Filtered Data (CSV)"):
-            csv = filtered_df.to_csv(index=False)
-            st.download_button(
-                "Download CSV",
-                csv,
-                f"inventory_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "text/csv"
+            "Type": st.column_config.SelectboxColumn(
+                "Type",
+                help="Type of probe",
+                width="medium",
+                options=["pH Probe", "DO Probe", "ORP Probe", "EC Probe"]
+            ),
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                help="Current status of the probe",
+                width="small",
+                options=["Instock", "Calibrated", "Shipped", "Scraped"]
             )
-    
-    with col2:
-        if st.button("Export Full Inventory (CSV)"):
-            csv = df.to_csv(index=False)
-            st.download_button(
-                "Download CSV",
-                csv,
-                f"full_inventory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "text/csv"
-            )
+        }
 
-    # Status info
-    st.markdown("### Status Color Legend")
-    status_cols = st.columns(len(STATUS_COLORS))
-    for i, (status, color) in enumerate(STATUS_COLORS.items()):
-        status_cols[i].markdown(
-            f'<div style="background-color: {color}; padding: 10px; '
-            f'border-radius: 5px; text-align: center; margin: 5px;">'
-            f'{status}</div>',
-            unsafe_allow_html=True
+        edited_df = st.data_editor(
+            filtered_df[essential_columns],
+            column_config=column_config,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="inventory_editor"
         )
 
-    # Debug Information
-    with st.expander("🛠️ Debug Info", expanded=False):
-        st.write({
-            "Total Records": len(df),
-            "Filtered Records": len(filtered_df),
-            "Last Save": st.session_state.get('last_save_time', 'Never'),
-            "Connection Status": '✅ Connected' if st.session_state.inventory_manager.verify_connection() else '❌ Disconnected'
-        })
+        # Save changes button - only show if changes were made
+        if not edited_df.equals(filtered_df[essential_columns]):
+            if st.button("Save Changes", type="primary"):
+                try:
+                    # Update the main inventory
+                    for idx, row in edited_df.iterrows():
+                        if idx in st.session_state.inventory.index:
+                            for col in essential_columns:
+                                st.session_state.inventory.loc[idx, col] = row[col]
+                    
+                    if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
+                        st.success("✅ Changes saved successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error saving changes: {str(e)}")
+
+    with tab3:
+        st.markdown("### 🔧 Tools")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### Export Data")
+            if st.button("Export Filtered Data (CSV)"):
+                csv = filtered_df.to_csv(index=False)
+                st.download_button(
+                    "📥 Download CSV",
+                    csv,
+                    f"inventory_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv"
+                )
+        
+        with col2:
+            st.markdown("#### Connection Status")
+            if st.session_state.inventory_manager.verify_connection():
+                st.success("✅ Connected to Google Sheets")
+                st.info(f"Last Update: {st.session_state.get('last_save_time', 'Never')}")
+            else:
+                st.error("❌ Connection Error")
+
+        # Debug info in expandable section
+        with st.expander("🛠️ Debug Information", expanded=False):
+            st.json({
+                "Total Records": len(df),
+                "Filtered Records": len(filtered_df),
+                "Last Save": st.session_state.get('last_save_time', 'Never'),
+                "Active Filters": len(filtered_df) != len(df)
+            })
 
 if __name__ == "__main__":
     inventory_review_page()
