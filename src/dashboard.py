@@ -1,137 +1,118 @@
-# Set page config globally
+# src/dashboard.py
 import streamlit as st
-st.set_page_config(
-    page_title="Probe Management Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import pandas as pd
 from .inventory_manager import STATUS_COLORS
 
-def apply_custom_css():
-    """Apply custom CSS styling to the dashboard."""
-    st.markdown("""
-        <style>
-        .main .block-container {padding-top: 2rem;}
-        div[data-testid="stMetricValue"] {font-size: 28px;}
-        div[data-testid="stMetricDelta"] {font-size: 14px;}
-        </style>
-    """, unsafe_allow_html=True)
-
-def render_header():
-    """Render the dashboard header with logo and title."""
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        st.image("logo.png", width=100)  # Make sure to add your logo file
-    with col2:
-        st.title("🎯 Probe Management Dashboard")
-        st.markdown("Real-time monitoring and analytics for probe inventory and calibration")
-
 def render_kpi_metrics(inventory_df):
     """Render the Key Performance Indicators section."""
-    st.markdown("### 📊 Key Performance Indicators")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
     total_probes = len(inventory_df)
     
+    # Create metrics with consistent styling
+    col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
-        st.metric(
-            "Total Inventory",
-            f"{total_probes:,}",
-            help="Total number of probes in the system"
-        )
+        st.markdown("""
+            <div class="stCard">
+                <h4>Total Inventory</h4>
+                <h2>{:,}</h2>
+            </div>
+        """.format(total_probes), unsafe_allow_html=True)
         
     with col2:
         active_probes = len(inventory_df[inventory_df['Status'].isin(['Instock', 'Calibrated'])])
-        st.metric(
-            "Active Probes",
-            f"{active_probes:,}",
-            f"{(active_probes/total_probes*100):.1f}% utilization",
-            help="Probes available for immediate use"
-        )
+        percentage = (active_probes/total_probes*100) if total_probes > 0 else 0
+        st.markdown(f"""
+            <div class="stCard">
+                <h4>Active Probes</h4>
+                <h2>{active_probes:,}</h2>
+                <small>{percentage:.1f}% utilization</small>
+            </div>
+        """, unsafe_allow_html=True)
         
     with col3:
         need_cal = len(inventory_df[inventory_df['Status'] == 'Instock'])
-        st.metric(
-            "Pending Calibration",
-            f"{need_cal:,}",
-            f"{(need_cal/total_probes*100):.1f}% of total",
-            delta_color="inverse",
-            help="Probes requiring immediate calibration"
-        )
+        percentage = (need_cal/total_probes*100) if total_probes > 0 else 0
+        st.markdown(f"""
+            <div class="stCard">
+                <h4>Pending Calibration</h4>
+                <h2>{need_cal:,}</h2>
+                <small class="warning-text">{percentage:.1f}% of total</small>
+            </div>
+        """, unsafe_allow_html=True)
         
     with col4:
-        critical_cal = len(inventory_df[
-            (inventory_df['Status'] == 'Calibrated') & 
-            (pd.to_datetime(inventory_df['Next Calibration']) <= datetime.now() + timedelta(days=7))
-        ])
-        st.metric(
-            "Critical Calibrations",
-            f"{critical_cal:,}",
-            "Due within 7 days",
-            delta_color="inverse",
-            help="Probes requiring calibration within the next week"
-        )
-        
-    with col5:
         shipped = len(inventory_df[inventory_df['Status'] == 'Shipped'])
-        st.metric(
-            "Deployed Probes",
-            f"{shipped:,}",
-            f"{(shipped/total_probes*100):.1f}% deployment rate",
-            help="Probes currently in the field"
-        )
+        percentage = (shipped/total_probes*100) if total_probes > 0 else 0
+        st.markdown(f"""
+            <div class="stCard">
+                <h4>Deployed Probes</h4>
+                <h2>{shipped:,}</h2>
+                <small>{percentage:.1f}% deployment rate</small>
+            </div>
+        """, unsafe_allow_html=True)
 
 def render_analysis_charts(inventory_df):
     """Render the inventory analysis charts."""
     st.markdown("### 📈 Inventory Analysis")
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        status_counts = inventory_df['Status'].value_counts()
-        fig_status = go.Figure(data=[
-            go.Pie(
-                labels=status_counts.index,
-                values=status_counts.values,
-                hole=.4,
-                marker=dict(colors=[STATUS_COLORS.get(status, '#CCCCCC') for status in status_counts.index])
+        with st.container():
+            st.markdown('<div class="stCard">', unsafe_allow_html=True)
+            status_counts = inventory_df['Status'].value_counts()
+            fig_status = go.Figure(data=[
+                go.Pie(
+                    labels=status_counts.index,
+                    values=status_counts.values,
+                    hole=.4,
+                    marker=dict(colors=[STATUS_COLORS.get(status, '#CCCCCC') for status in status_counts.index])
+                )
+            ])
+            fig_status.update_layout(
+                title="Status Distribution",
+                showlegend=True,
+                height=400,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=30, b=0, l=0, r=0)
             )
-        ])
-        fig_status.update_layout(
-            title="Status Distribution",
-            showlegend=True,
-            height=400
-        )
-        st.plotly_chart(fig_status, use_container_width=True)
+            st.plotly_chart(fig_status, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         
     with col2:
-        type_counts = inventory_df['Type'].value_counts()
-        fig_type = px.bar(
-            x=type_counts.index,
-            y=type_counts.values,
-            title="Probe Type Distribution",
-            labels={'x': 'Probe Type', 'y': 'Count'}
-        )
-        fig_type.update_layout(height=400)
-        st.plotly_chart(fig_type, use_container_width=True)
+        with st.container():
+            st.markdown('<div class="stCard">', unsafe_allow_html=True)
+            type_counts = inventory_df['Type'].value_counts()
+            fig_type = px.bar(
+                x=type_counts.index,
+                y=type_counts.values,
+                title="Probe Type Distribution",
+                labels={'x': 'Probe Type', 'y': 'Count'}
+            )
+            fig_type.update_layout(
+                height=400,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=30, b=0, l=0, r=0)
+            )
+            st.plotly_chart(fig_type, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 def render_calibration_section(inventory_df):
     """Render the calibration management section."""
     st.markdown("### 📅 Calibration Management")
     
-    col1, col2 = st.columns([2, 3])
-    with col1:
-        days_filter = st.slider(
-            "Show calibrations due within (days):",
-            min_value=7,
-            max_value=90,
-            value=30,
-            step=7
-        )
+    days_filter = st.slider(
+        "Show calibrations due within (days):",
+        min_value=7,
+        max_value=90,
+        value=30,
+        step=7
+    )
     
     upcoming_cals = inventory_df[
         (inventory_df['Status'] == 'Calibrated') & 
@@ -143,11 +124,10 @@ def render_calibration_section(inventory_df):
         
         for _, row in upcoming_cals.iterrows():
             days_until = (pd.to_datetime(row['Next Calibration']) - datetime.now()).days
-            urgency_color = '#ff0000' if days_until <= 7 else '#ffc107' if days_until <= 14 else '#28a745'
+            urgency_color = 'var(--error-color)' if days_until <= 7 else 'var(--warning-color)' if days_until <= 14 else 'var(--success-color)'
             
             st.markdown(f"""
-                <div style="padding: 15px; border-left: 4px solid {urgency_color}; 
-                           margin: 5px 0; background-color: rgba(248,249,250,0.95); border-radius: 4px;">
+                <div class="stCard" style="border-left: 4px solid {urgency_color};">
                     <div style="display: flex; justify-content: space-between;">
                         <div>
                             <strong>{row['Serial Number']}</strong> - {row['Type']}<br>
@@ -168,18 +148,20 @@ def render_calibration_section(inventory_df):
 def render_recent_activity(inventory_df):
     """Render the recent activity section."""
     st.markdown("### 📝 Recent Activity")
-    recent_df = inventory_df.sort_values('Last Modified', ascending=False).head(10)
+    recent_df = inventory_df.sort_values('Last Modified', ascending=False).head(5)
     
     if not recent_df.empty:
         for _, row in recent_df.iterrows():
             status_color = STATUS_COLORS.get(row['Status'], '#CCCCCC')
             st.markdown(f"""
-                <div style="padding: 12px; border-left: 4px solid {status_color}; 
-                           margin: 5px 0; background-color: rgba(248,249,250,0.95); border-radius: 4px;">
+                <div class="stCard" style="border-left: 4px solid {status_color};">
                     <div style="display: flex; justify-content: space-between;">
                         <div>
                             <strong>{row['Serial Number']}</strong> - {row['Type']}<br>
-                            Status: <span style="color: {status_color}">{row['Status']}</span>
+                            <span class="status-badge" style="background-color: {status_color}20; 
+                                                            color: {status_color}">
+                                {row['Status']}
+                            </span>
                         </div>
                         <div style="text-align: right;">
                             <small>Modified: {row.get('Last Modified', 'N/A')}</small>
@@ -188,33 +170,13 @@ def render_recent_activity(inventory_df):
                 </div>
             """, unsafe_allow_html=True)
 
-def render_export_section(inventory_df):
-    """Render the data export section."""
-    st.markdown("### 📤 Export Data")
-    if st.button("Download Full Report"):
-        csv = inventory_df.to_csv(index=False)
-        st.download_button(
-            label="Download CSV",
-            data=csv,
-            file_name=f"probe_inventory_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-
 def render_dashboard():
     """Main function to render the dashboard."""
-    # Apply custom CSS
-    apply_custom_css()
+    st.markdown("# 🎯 Probe Management Dashboard")
+    st.markdown("Real-time monitoring and analytics for probe inventory and calibration")
     
-    # Render header
-    render_header()
-    
-    # Initialize inventory manager
-    if 'inventory_manager' not in st.session_state:
-        from .inventory_manager import InventoryManager
-        st.session_state.inventory_manager = InventoryManager()
-        st.session_state.inventory_manager.initialize_inventory()
-
-    inventory_df = st.session_state.inventory
+    # Get inventory data from session state
+    inventory_df = st.session_state.get('inventory')
 
     if inventory_df is None or inventory_df.empty:
         st.warning("⚠️ No inventory data available. Please check the data source connection.")
@@ -230,9 +192,24 @@ def render_dashboard():
     # Render each section
     render_kpi_metrics(inventory_df)
     render_analysis_charts(inventory_df)
-    render_calibration_section(inventory_df)
-    render_recent_activity(inventory_df)
-    render_export_section(inventory_df)
+    
+    # Create two columns for calibration and activity
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        render_calibration_section(inventory_df)
+    
+    with col2:
+        render_recent_activity(inventory_df)
 
-if __name__ == "__main__":
-    render_dashboard()
+    # Add export functionality
+    st.markdown("### 📤 Export Data")
+    if st.button("Download Full Report", use_container_width=True):
+        csv = inventory_df.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name=f"probe_inventory_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
