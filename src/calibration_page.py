@@ -439,7 +439,6 @@ def render_ph_calibration():
 
             # Add slope and offset fields in the measurements column for pH 7
             if buffer['name'] == "pH 7":
-                st.markdown("##### Offset Reading")
                 ph_data['offset_mv'] = st.number_input(
                     "pH 7 Offset (mV)",
                     min_value=-60.0,
