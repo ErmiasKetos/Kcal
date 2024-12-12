@@ -1,181 +1,217 @@
-# src/inventory_review.py
-
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-import time
-import json
-from .inventory_manager import InventoryManager, STATUS_COLORS
+from datetime import datetime, timedelta
+import logging
+import gspread
+from google.oauth2 import service_account
 
-def render_inventory_table(filtered_df):
-    """Render interactive inventory table."""
-    # Column configuration with clickable serial numbers
-    column_config = {
-        "Serial Number": st.column_config.TextColumn(
-            "Serial Number",
-            help="Click for actions",
-            width="medium"
-        ),
-        "Type": st.column_config.TextColumn(
-            "Type",
-            width="medium"
-        ),
-        "Status": st.column_config.Column(
-            "Status",
-            width="small",
-        ),
-        "Manufacturer": st.column_config.TextColumn(
-            "Manufacturer",
-            width="medium"
-        ),
-        "KETOS P/N": st.column_config.TextColumn(
-            "KETOS P/N",
-            width="medium"
-        ),
-        "Entry Date": st.column_config.TextColumn(
-            "Entry Date",
-            width="small"
-        ),
-        "Next Calibration": st.column_config.TextColumn(
-            "Next Calibration",
-            width="small"
-        )
-    }
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    # Initialize session state for selected probe
-    if 'selected_row' not in st.session_state:
-        st.session_state.selected_row = None
+# Constants
+SHEET_ID = "1J9VE94Ja863EyPNZGOEes1EuILg0FsGC58bLwKiQlbc"
+WORKSHEET_NAME = "Sheet1"
 
-    # Display the dataframe with the configured columns
-    edited_df = st.data_editor(
-        filtered_df,
-        column_config=column_config,
-        disabled=["Type", "Manufacturer", "KETOS P/N", "Entry Date", "Next Calibration"],
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="inventory_editor"
-    )
+# Status color mapping
+STATUS_COLORS = {
+    'Instock': '#FFD700',      # Gold Yellow
+    'Calibrated': '#32CD32',   # Lime Green
+    'Shipped': '#4169E1',      # Royal Blue
+    'Scraped': '#DC143C'       # Crimson
+}
 
-    # Handle row selection
-    if edited_df is not None:
-        for index, row in edited_df.iterrows():
-            sn = row['Serial Number']
-            # Create a unique key for each row's action buttons
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if st.button(f"Select Action for {sn}", key=f"select_{sn}"):
-                    st.session_state.selected_row = row
+class InventoryManager:
+    def __init__(self):
+        """Initialize InventoryManager with Google Sheets connection."""
+        self.sheet_id = SHEET_ID
+        self.worksheet_name = WORKSHEET_NAME
+        self.client = None
+        self.worksheet = None
+        self._initialize_sheets()
 
-    # Handle selected row actions
-    if st.session_state.selected_row is not None:
-        row = st.session_state.selected_row
-        serial = row['Serial Number']
+    def _initialize_sheets(self):
+        """Initialize Google Sheets connection."""
+        try:
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive.file",
+                ]
+            )
+            self.client = gspread.authorize(credentials)
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+    
+            # Try to get the worksheet, create if it doesn't exist
+            try:
+                self.worksheet = spreadsheet.worksheet(self.worksheet_name)
+            except gspread.exceptions.WorksheetNotFound:
+                # Create new worksheet
+                self.worksheet = spreadsheet.add_worksheet(
+                    title=self.worksheet_name,
+                    rows=1000,
+                    cols=20
+                )
+                # Initialize headers
+                headers = [
+                    "Serial Number", "Type", "Manufacturer", "KETOS P/N",
+                    "Mfg P/N", "Next Calibration", "Status", "Entry Date",
+                    "Last Modified", "Change Date", "Calibration Data"
+                ]
+                self.worksheet.append_row(headers)
+                # Format header row
+                self.worksheet.format('A1:K1', {
+                    "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
+                    "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
+                })
+    
+            logger.info("Successfully initialized Google Sheets connection")
+        except Exception as e:
+            logger.error(f"Failed to initialize sheets connection: {str(e)}")
+            raise
 
-        st.markdown(f"### Actions for {serial}")
-        action = st.radio(
-            "Choose action:",
-            ["Calibrate", "Change Status"],
-            key=f"action_{serial}"
-        )
+    def initialize_inventory(self):
+        """Initialize or load existing inventory"""
+        try:
+            if 'inventory' not in st.session_state or st.session_state.inventory.empty:
+                data = self.worksheet.get_all_records()
+                df = pd.DataFrame(data)
+                
+                # Convert date columns
+                date_columns = ['Entry Date', 'Last Modified', 'Next Calibration', 'Change Date']
+                for col in date_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d')
+                
+                st.session_state.inventory = df
+                logger.info(f"Loaded inventory from Google Sheets: {len(df)} records")
+        except Exception as e:
+            logger.error(f"Error initializing inventory: {str(e)}")
+            st.session_state.inventory = pd.DataFrame(columns=[
+                "Serial Number", "Type", "Manufacturer", "KETOS P/N",
+                "Mfg P/N", "Next Calibration", "Status", "Entry Date",
+                "Last Modified", "Change Date", "Calibration Data"
+            ])
 
-        if action == "Calibrate":
-            if st.button("Proceed to Calibration"):
-                st.session_state.selected_probe = serial
-                st.session_state.page = "Probe Calibration"
-                st.rerun()
+    def get_filtered_inventory(self, status_filter="All"):
+        """Get filtered inventory based on status"""
+        try:
+            if status_filter == "All":
+                return st.session_state.inventory
+            return st.session_state.inventory[st.session_state.inventory['Status'] == status_filter]
+        except Exception as e:
+            logger.error(f"Error filtering inventory: {str(e)}")
+            return pd.DataFrame()
 
-        elif action == "Change Status":
-            new_status = st.selectbox(
-                "Select new status:",
-                ["Instock", "Calibrated", "Shipped", "Scraped"],
-                key=f"status_{serial}"
+    def style_inventory_dataframe(self, df):
+        """Apply color styling to inventory dataframe based on status"""
+        try:
+            def color_status(val):
+                return f'background-color: {STATUS_COLORS.get(val, "white")}'
+            return df.style.applymap(color_status, subset=['Status'])
+        except Exception as e:
+            logger.error(f"Error styling dataframe: {str(e)}")
+            return df
+
+    def save_inventory(self, inventory_df):
+        """Save inventory to Google Sheets with backup"""
+        try:
+            # Update main worksheet
+            headers = inventory_df.columns.tolist()
+            data = inventory_df.values.tolist()
+            
+            self.worksheet.clear()
+            self.worksheet.update('A1', [headers])
+            if data:
+                self.worksheet.update('A2', data)
+
+            # Format header row
+            self.worksheet.format('A1:Z1', {
+                "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
+                "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
+            })
+
+            # Create backup if it's backup day
+            if datetime.now().day % 5 == 0:
+                try:
+                    backup_sheet_name = f"Backup_{datetime.now().strftime('%Y%m%d')}"
+                    sheet = self.client.open_by_key(self.sheet_id)
+                    backup_worksheet = sheet.add_worksheet(backup_sheet_name, 1000, 100)
+                    backup_worksheet.update('A1', [headers])
+                    backup_worksheet.update('A2', data)
+                    logger.info(f"Created backup worksheet: {backup_sheet_name}")
+                except Exception as e:
+                    logger.error(f"Backup creation failed: {str(e)}")
+
+            st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving inventory: {str(e)}")
+            return False
+
+    def update_probe_status(self, serial_number, new_status):
+        """Update probe status and metadata"""
+        try:
+            if serial_number in st.session_state.inventory['Serial Number'].values:
+                mask = st.session_state.inventory['Serial Number'] == serial_number
+                st.session_state.inventory.loc[mask, 'Status'] = new_status
+                st.session_state.inventory.loc[mask, 'Change Date'] = datetime.now().strftime('%Y-%m-%d')
+                st.session_state.inventory.loc[mask, 'Last Modified'] = datetime.now().strftime('%Y-%m-%d')
+                
+                return self.save_inventory(st.session_state.inventory)
+            return False
+        except Exception as e:
+            logger.error(f"Error updating status: {str(e)}")
+            return False
+
+    def get_next_serial_number(self, probe_type, manufacturing_date):
+        """Generate sequential serial number"""
+        try:
+            existing_serials = st.session_state.inventory[
+                st.session_state.inventory['Type'] == probe_type
+            ]['Serial Number'].tolist()
+            
+            if existing_serials:
+                sequence_numbers = [
+                    int(serial.split('_')[-1])
+                    for serial in existing_serials
+                ]
+                next_sequence = max(sequence_numbers) + 1
+            else:
+                next_sequence = 1
+            
+            expire_date = manufacturing_date + timedelta(days=365 * 2)  # 2-year default
+            expire_yymm = expire_date.strftime("%y%m")
+            return f"{probe_type.split()[0]}_{expire_yymm}_{next_sequence:05d}"
+        except Exception as e:
+            logger.error(f"Error generating serial number: {str(e)}")
+            return None
+
+    def add_new_probe(self, probe_data):
+        """Add a new probe to the inventory"""
+        try:
+            probe_data['Entry Date'] = datetime.now().strftime('%Y-%m-%d')
+            probe_data['Last Modified'] = datetime.now().strftime('%Y-%m-%d')
+            probe_data['Change Date'] = datetime.now().strftime('%Y-%m-%d')
+            probe_data['Status'] = 'Instock'
+            
+            new_row_df = pd.DataFrame([probe_data])
+            st.session_state.inventory = pd.concat(
+                [st.session_state.inventory, new_row_df],
+                ignore_index=True
             )
             
-            if st.button("Update Status"):
-                if 'inventory_manager' in st.session_state:
-                    success = st.session_state.inventory_manager.update_probe_status(serial, new_status)
-                    if success:
-                        st.success(f"✅ Status updated to {new_status}")
-                        st.session_state.selected_row = None
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Failed to update status")
+            return self.save_inventory(st.session_state.inventory)
+        except Exception as e:
+            logger.error(f"Error adding new probe: {str(e)}")
+            return False
 
-        if st.button("Cancel"):
-            st.session_state.selected_row = None
-            st.rerun()
-
-def inventory_review_page():
-    """Display and manage inventory."""
-    st.markdown("<h2 style='color: #0071ba;'>Inventory Review</h2>", unsafe_allow_html=True)
-    
-    # Initialize inventory if needed
-    if 'inventory_manager' not in st.session_state:
-        st.session_state.inventory_manager = InventoryManager()
-        st.session_state.inventory_manager.initialize_inventory()
-    
-    # Status filter
-    status_filter = st.selectbox(
-        "Filter by Status",
-        ["All", "Instock", "Calibrated", "Shipped", "Scraped"]
-    )
-    
-    # Get filtered inventory
-    filtered_df = get_filtered_inventory(status_filter)
-    
-    # Apply status colors to the Status column
-    if not filtered_df.empty:
-        # Create a style function for the Status column
-        def style_status(val):
-            return f'background-color: {STATUS_COLORS.get(val, "white")}'
-        
-        styled_df = filtered_df.style.applymap(
-            style_status, 
-            subset=['Status']
-        )
-        
-        # Display the inventory table
-        render_inventory_table(styled_df)
-        
-        # Display summary statistics
-        st.markdown("### Inventory Summary")
-        status_counts = filtered_df['Status'].value_counts()
-        summary_cols = st.columns(len(STATUS_COLORS))
-        for i, status in enumerate(STATUS_COLORS.keys()):
-            count = status_counts.get(status, 0)
-            summary_cols[i].metric(
-                label=status,
-                value=count,
-                delta=f"{count/len(filtered_df)*100:.1f}%" if len(filtered_df) > 0 else "0%"
-            )
-    else:
-        st.info("No records found for the selected filter.")
-
-    # Export options
-    st.markdown("### Export Options")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("Export Filtered Data"):
-            csv = filtered_df.to_csv(index=False)
-            st.download_button(
-                "Download CSV",
-                csv,
-                f"inventory_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "text/csv"
-            )
-    
-    with col2:
-        if st.button("Export Full Inventory"):
-            csv = st.session_state.inventory.to_csv(index=False)
-            st.download_button(
-                "Download CSV",
-                csv,
-                f"full_inventory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "text/csv"
-            )
-
-if __name__ == "__main__":
-    inventory_review_page()
+    def verify_connection(self):
+        """Verify connection to Google Sheets"""
+        try:
+            self.worksheet.get_all_values()
+            return True
+        except Exception as e:
+            logger.error(f"Connection verification failed: {str(e)}")
+            return False
