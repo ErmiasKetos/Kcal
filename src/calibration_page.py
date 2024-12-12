@@ -452,7 +452,6 @@ def render_ph_calibration():
 
             # Add slope field after pH 4 measurements
             if buffer['name'] == "pH 4":
-                st.markdown("##### Slope Reading")
                 ph_data['slope_mv'] = st.number_input(
                     "Slope (mV/pH)",
                     min_value=-65.0,
