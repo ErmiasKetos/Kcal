@@ -166,91 +166,186 @@ def render_autocomplete_search():
     
     return None
 
-def render_ph_calibration():
-    """Render pH probe calibration form with validation."""
-    st.markdown('<h3 style="color: #0071ba;">pH Calibration</h3>', unsafe_allow_html=True)
-    ph_data = {}
-    
-    # Temperature measurement
-    col1, col2 = st.columns(2)
-    with col1:
-        ph_data['temperature'] = st.number_input(
-            "Solution Temperature (°C)",
-            min_value=10.0,
-            max_value=40.0,
-            value=25.0,
-            step=0.1,
-            help="Temperature must be between 10-40°C"
-        )
 
-    # Buffer solutions
-    for idx, (buffer_label, color) in enumerate([
-        ("pH 7", "#f8f1f1"),
-        ("pH 4", "#e8f8f2"),
-        ("pH 10", "#e8f0f8")
-    ]):
-        st.markdown(
-            f'<div style="background-color: {color}; border: 1px solid #ccc; '
-            f'padding: 15px; border-radius: 8px; margin-bottom: 15px;">',
-            unsafe_allow_html=True
-        )
-        
-        st.markdown(f"#### {buffer_label} Buffer")
+def render_ph_calibration():
+    """Render modern pH probe calibration form."""
+    # Custom CSS for pH calibration
+    st.markdown("""
+        <style>
+            .buffer-card {
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+                transition: all 0.3s ease;
+            }
+            .buffer-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            }
+            .buffer-title {
+                font-size: 1.2em;
+                font-weight: bold;
+                margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .reading-section {
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 10px;
+            }
+            .ph-header {
+                background: linear-gradient(90deg, #0071ba, #00a6fb);
+                color: white;
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                text-align: center;
+            }
+            .buffer-ph7 { border-left: 4px solid #FFD700; }
+            .buffer-ph4 { border-left: 4px solid #FF6B6B; }
+            .buffer-ph10 { border-left: 4px solid #4ECDC4; }
+            .info-text {
+                font-size: 0.9em;
+                color: #666;
+                margin-top: 5px;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Header
+    st.markdown("""
+        <div class='ph-header'>
+            <h2 style='margin:0;'>🧪 pH Probe Calibration</h2>
+            <p style='margin:0; margin-top:5px; font-size:0.9em;'>
+                Three-point calibration using pH 4, 7, and 10 buffers
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    ph_data = {}
+
+    # Temperature Measurement
+    st.markdown("### 🌡️ Temperature Settings")
+    with st.container():
         col1, col2 = st.columns(2)
+        with col1:
+            ph_data['temperature'] = st.number_input(
+                "Solution Temperature (°C)",
+                min_value=10.0,
+                max_value=40.0,
+                value=25.0,
+                step=0.1,
+                help="Maintain temperature between 10-40°C for accurate calibration"
+            )
+
+    # Buffer Solutions
+    buffer_configs = [
+        {
+            "name": "pH 7",
+            "class": "buffer-ph7",
+            "icon": "⚖️",
+            "desc": "Start with pH 7 (Neutral) buffer",
+            "color": "#FFD700"
+        },
+        {
+            "name": "pH 4",
+            "class": "buffer-ph4",
+            "icon": "🔴",
+            "desc": "Followed by pH 4 (Acidic) buffer",
+            "color": "#FF6B6B"
+        },
+        {
+            "name": "pH 10",
+            "class": "buffer-ph10",
+            "icon": "🔵",
+            "desc": "Finally pH 10 (Basic) buffer",
+            "color": "#4ECDC4"
+        }
+    ]
+
+    for buffer in buffer_configs:
+        st.markdown(f"### {buffer['icon']} {buffer['name']} Buffer Solution")
+        st.markdown(f"<div class='buffer-card {buffer['class']}'>", unsafe_allow_html=True)
+        
+        # Buffer Information
+        col1, col2 = st.columns([1, 1])
         
         with col1:
-            # Buffer solution details
-            ph_data[f"{buffer_label}_control"] = st.text_input(
-                f"{buffer_label} Control Number",
-                key=f"ph_{idx}_control",
+            st.markdown("#### 📋 Buffer Information")
+            ph_data[f"{buffer['name']}_control"] = st.text_input(
+                "Control Number",
+                key=f"{buffer['name']}_control",
                 help="Enter the buffer solution control number"
             )
-            ph_data[f"{buffer_label}_exp"] = st.date_input(
-                f"{buffer_label} Expiration Date",
-                min_value=date.today(),
-                key=f"ph_{idx}_exp"
+            ph_data[f"{buffer['name']}_exp"] = st.date_input(
+                "Expiration Date",
+                key=f"{buffer['name']}_exp",
+                help="Buffer solution expiration date"
             )
-            ph_data[f"{buffer_label}_lot"] = st.text_input(
-                f"{buffer_label} Lot Number",
-                key=f"ph_{idx}_lot"
+            ph_data[f"{buffer['name']}_opened"] = st.date_input(
+                "Date Opened",
+                key=f"{buffer['name']}_opened",
+                help="Date when the buffer was opened"
             )
 
         with col2:
-            # Measurements
-            ph_data[f"{buffer_label}_initial_ph"] = st.number_input(
-                f"{buffer_label} Initial pH",
-                min_value=0.0,
-                max_value=14.0,
-                step=0.01,
-                key=f"ph_{idx}_initial_ph",
-                help=f"Expected range: {PH_RANGES[buffer_label][0]}-{PH_RANGES[buffer_label][1]}"
-            )
-            ph_data[f"{buffer_label}_initial_mv"] = st.number_input(
-                f"{buffer_label} Initial mV",
-                min_value=-2000.0,
-                max_value=2000.0,
-                step=0.1,
-                key=f"ph_{idx}_initial_mv"
-            )
-            ph_data[f"{buffer_label}_final_ph"] = st.number_input(
-                f"{buffer_label} Final pH",
-                min_value=0.0,
-                max_value=14.0,
-                step=0.01,
-                key=f"ph_{idx}_final_ph"
-            )
-            ph_data[f"{buffer_label}_final_mv"] = st.number_input(
-                f"{buffer_label} Final mV",
-                min_value=-2000.0,
-                max_value=2000.0,
-                step=0.1,
-                key=f"ph_{idx}_final_mv"
-            )
+            st.markdown("#### 📊 Measurements")
+            with st.container():
+                st.markdown('<div class="reading-section">', unsafe_allow_html=True)
+                
+                measurement_cols = st.columns(2)
+                with measurement_cols[0]:
+                    ph_data[f"{buffer['name']}_initial"] = st.number_input(
+                        "Initial Reading (pH)",
+                        min_value=0.0,
+                        max_value=14.0,
+                        step=0.01,
+                        key=f"{buffer['name']}_initial_ph",
+                        help=f"Initial pH reading for {buffer['name']} buffer"
+                    )
+                    ph_data[f"{buffer['name']}_initial_mv"] = st.number_input(
+                        "Initial mV",
+                        min_value=-2000.0,
+                        max_value=2000.0,
+                        step=0.1,
+                        key=f"{buffer['name']}_initial_mv",
+                        help="Initial millivolt reading"
+                    )
+                
+                with measurement_cols[1]:
+                    ph_data[f"{buffer['name']}_calibrated"] = st.number_input(
+                        "Final Reading (pH)",
+                        min_value=0.0,
+                        max_value=14.0,
+                        step=0.01,
+                        key=f"{buffer['name']}_final_ph",
+                        help=f"Final calibrated pH reading for {buffer['name']} buffer"
+                    )
+                    ph_data[f"{buffer['name']}_calibrated_mv"] = st.number_input(
+                        "Final mV",
+                        min_value=-2000.0,
+                        max_value=2000.0,
+                        step=0.1,
+                        key=f"{buffer['name']}_final_mv",
+                        help="Final calibrated millivolt reading"
+                    )
+                st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+        # Expected Range Info
+        st.markdown(f"""
+            <div class='info-text'>
+                {buffer['desc']}
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+
     return ph_data
-
 def render_do_calibration():
     """Render DO probe calibration form with validation."""
     st.markdown('<h3 style="color: #0071ba;">DO Calibration</h3>', unsafe_allow_html=True)
