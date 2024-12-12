@@ -230,37 +230,47 @@ def handle_click():
                         else:
                             st.error("Failed to update status")
 
+
 def render_inventory_table(filtered_df):
     """Render the inventory data table."""
+    # First, add a column for actions if clicked
+    if 'selected_sn' not in st.session_state:
+        st.session_state.selected_sn = None
+        
     # Column configuration
     column_config = {
-        "Serial Number": st.column_config.Column(
+        "Serial Number": st.column_config.TextColumn(
             "Serial Number",
-            help="Click to manage probe",
+            help="Select to manage probe",
             width="medium"
         ),
-        "Type": st.column_config.SelectboxColumn(
+        "Actions": st.column_config.SelectboxColumn(  # Add new actions column
+            "Actions",
+            help="Choose action for probe",
+            width="medium",
+            options=["", "Calibrate", "Change Status"]
+        ),
+        "Type": st.column_config.TextColumn(
             "Type",
             help="Type of probe",
-            width="medium",
-            options=sorted(filtered_df['Type'].unique())
+            width="medium"
         ),
-        "Status": st.column_config.Column(
+        "Status": st.column_config.TextColumn(
             "Status",
             help="Current status of the probe",
             width="small"
         ),
-        "Entry Date": st.column_config.TextColumn(  # Changed from DateColumn to TextColumn
+        "Entry Date": st.column_config.TextColumn(
             "Entry Date",
             help="Date when the probe was added to inventory",
             width="small"
         ),
-        "Last Modified": st.column_config.TextColumn(  # Changed from DateColumn to TextColumn
+        "Last Modified": st.column_config.TextColumn(
             "Last Modified",
             help="Last modification date",
             width="small"
         ),
-        "Next Calibration": st.column_config.TextColumn(  # Changed from DateColumn to TextColumn
+        "Next Calibration": st.column_config.TextColumn(
             "Next Calibration",
             help="Date when next calibration is due",
             width="small"
@@ -277,8 +287,11 @@ def render_inventory_table(filtered_df):
         )
     }
 
-    # Apply colored status
+    # Prepare display dataframe with actions column
     display_df = filtered_df.copy()
+    display_df.insert(1, 'Actions', "")  # Add empty actions column
+    
+    # Apply colored status
     display_df['Status'] = display_df['Status'].apply(
         lambda x: f"""
             <div style='
@@ -294,32 +307,45 @@ def render_inventory_table(filtered_df):
         """
     )
 
-    # Add table styling
-    st.markdown("""
-        <style>
-            .stDataFrame td {
-                vertical-align: middle !important;
-            }
-            .stDataFrame td:nth-child(3) div {
-                margin: auto;
-                width: fit-content;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
     # Render table
     edited_df = st.data_editor(
         display_df,
         column_config=column_config,
         use_container_width=True,
         hide_index=True,
-        num_rows="dynamic",
-        key="inventory_editor",
-        on_change=handle_click
+        disabled=["Serial Number", "Status", "Entry Date", "Last Modified", 
+                 "Next Calibration", "Registered By", "Calibrated By"]
     )
 
-    return edited_df
+    # Handle actions from the table
+    if edited_df is not None:
+        for idx, row in edited_df.iterrows():
+            if row['Actions'] == "Calibrate":
+                st.session_state.page = "Probe Calibration"
+                st.session_state.selected_probe = row['Serial Number']
+                st.rerun()
+            elif row['Actions'] == "Change Status":
+                with st.expander(f"Change Status for {row['Serial Number']}", expanded=True):
+                    new_status = st.selectbox(
+                        "Select new status:",
+                        ["Instock", "Calibrated", "Shipped", "Scraped"],
+                        key=f"new_status_{row['Serial Number']}"
+                    )
+                    if st.button("Confirm Status Change", key=f"confirm_{row['Serial Number']}"):
+                        if st.session_state.inventory_manager.update_probe_status(
+                            row['Serial Number'], new_status
+                        ):
+                            st.success(f"Updated status to {new_status}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to update status")
 
+    # Remove the Actions column before returning
+    if 'Actions' in edited_df.columns:
+        edited_df = edited_df.drop('Actions', axis=1)
+    
+    return edited_df
 def render_tools_section(filtered_df, df):
     """Render tools and system status section."""
     col1, col2 = st.columns(2)
