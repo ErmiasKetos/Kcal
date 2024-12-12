@@ -4,331 +4,657 @@ from datetime import datetime, timedelta, date
 import logging
 import time
 import json
-from .inventory_manager import InventoryManager
+import numpy as np
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.basicConfig(level=logging.INFO)
 
-def convert_dates_to_strings(data):
-    """Convert all date objects in calibration data to string format."""
-    converted_data = {}
-    for key, value in data.items():
-        if isinstance(value, date):  
-            converted_data[key] = value.strftime("%Y-%m-%d")
-        else:
-            converted_data[key] = value
-    return converted_data
+# Constants for validation
+PH_RANGES = {
+    "pH 4": (3.8, 4.2),
+    "pH 7": (6.8, 7.2),
+    "pH 10": (9.8, 10.2)
+}
+
+DO_RANGES = {
+    "0%": (-0.1, 0.5),
+    "100%": (95.0, 105.0)
+}
+
+ORP_RANGES = {
+    "mV": (200, 275)  # For 225mV standard solution
+}
+
+EC_RANGES = {
+    "84": (80, 88),       # 84 µS/cm
+    "1413": (1390, 1436), # 1413 µS/cm
+    "12880": (12750, 13010) # 12.88 mS/cm
+}
+
+def validate_reading(value, range_min, range_max, reading_type):
+    """Validate if a reading is within acceptable range."""
+    try:
+        float_value = float(value)
+        if range_min <= float_value <= range_max:
+            return True
+        st.warning(f"{reading_type} reading ({float_value}) is outside expected range ({range_min}-{range_max})")
+        return False
+    except ValueError:
+        st.error(f"Invalid {reading_type} reading: {value}")
+        return False
 
 def get_searchable_probes():
-    """Get list of searchable probes with their details for autocomplete"""
-    if 'inventory' not in st.session_state:
+    """Enhanced probe search functionality."""
+    if 'inventory_manager' not in st.session_state:
         return []
     
     inventory_df = st.session_state.inventory
+    if inventory_df is None or inventory_df.empty:
+        return []
+        
     searchable_probes = []
     
     for _, row in inventory_df.iterrows():
+        # Enhance probe info with more details
+        calibration_status = "Never Calibrated"
+        days_since_cal = "N/A"
+        
+        if 'Calibration Data' in row and row['Calibration Data']:
+            try:
+                cal_data = json.loads(row['Calibration Data'])
+                if 'calibration_date' in cal_data:
+                    cal_date = datetime.strptime(cal_data['calibration_date'], "%Y-%m-%d")
+                    days_since_cal = (datetime.now() - cal_date).days
+                    calibration_status = f"Calibrated {days_since_cal} days ago"
+            except:
+                calibration_status = "Error loading calibration data"
+
         probe_info = {
             'serial': row['Serial Number'],
             'type': row['Type'],
             'manufacturer': row['Manufacturer'],
             'status': row['Status'],
             'display': f"{row['Serial Number']} - {row['Type']} ({row['Status']})",
-            'search_text': f"{row['Serial Number']} {row['Type']} {row['Manufacturer']} {row['Status']}"
+            'search_text': f"{row['Serial Number']} {row['Type']} {row['Manufacturer']} {row['Status']}",
+            'ketos_pn': row.get('KETOS P/N', 'N/A'),
+            'mfg_pn': row.get('Mfg P/N', 'N/A'),
+            'entry_date': row.get('Entry Date', 'N/A'),
+            'calibration_status': calibration_status,
+            'days_since_cal': days_since_cal
         }
         searchable_probes.append(probe_info)
     
     return searchable_probes
 
 def render_autocomplete_search():
-    """Render autocomplete search bar for probes with real-time suggestions"""
+    """Enhanced autocomplete search with advanced filtering."""
     probes = get_searchable_probes()
     
-    # Create a container for the search section
-    search_container = st.container()
+    if not probes:
+        st.warning("No probes found in inventory. Please add probes first.")
+        return None
     
-    with search_container:
-        st.markdown("""
-            <style>
-                .search-container {
-                    margin-bottom: 1rem;
-                }
-                .search-input {
-                    padding: 0.5rem;
-                    border-radius: 4px;
-                    border: 1px solid #ddd;
-                    width: 100%;
-                }
-                .suggestion-box {
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    margin-top: 4px;
-                    max-height: 200px;
-                    overflow-y: auto;
-                }
-                .suggestion-item {
-                    padding: 8px 12px;
-                    cursor: pointer;
-                    border-bottom: 1px solid #eee;
-                }
-                .suggestion-item:hover {
-                    background-color: #f0f2f6;
-                }
-                .status-badge {
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    font-size: 0.8em;
-                    margin-left: 8px;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-
-        # Initialize session state for search
-        if 'search_query' not in st.session_state:
-            st.session_state.search_query = ""
-        if 'selected_probe' not in st.session_state:
-            st.session_state.selected_probe = None
-        if 'show_suggestions' not in st.session_state:
-            st.session_state.show_suggestions = False
-
-        # Search input with autocomplete
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            search_query = st.text_input(
-                "🔍 Search Probe",
-                value=st.session_state.search_query,
-                key="probe_search",
-                placeholder="Type to search by Serial Number, Type, or Manufacturer...",
-            ).strip()
-        with col2:
-            if st.button("Clear", key="clear_search"):
-                st.session_state.search_query = ""
-                st.session_state.selected_probe = None
-                st.session_state.show_suggestions = False
-                st.rerun()
-
-        # Update session state
-        st.session_state.search_query = search_query
+    # Advanced search options
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        search_query = st.text_input(
+            "🔍 Search Probe",
+            key="probe_search",
+            placeholder="Enter Serial Number, Type, or Manufacturer...",
+        ).strip().lower()
+    
+    with col2:
+        status_filter = st.multiselect(
+            "Filter by Status",
+            options=["Instock", "Calibrated", "Shipped", "Scraped"],
+            default=["Instock"]
+        )
+    
+    # Filter probes based on search query and status
+    if search_query or status_filter:
+        filtered_probes = [
+            probe for probe in probes
+            if (not search_query or search_query in probe['search_text'].lower()) and
+               (not status_filter or probe['status'] in status_filter)
+        ]
         
-        # Filter probes based on search query
-        if search_query:
-            filtered_probes = [
-                probe for probe in probes
-                if search_query.lower() in probe['search_text'].lower()
-            ]
+        if filtered_probes:
+            st.markdown("#### Matching Probes")
             
-            # Show suggestions
-            if filtered_probes:
-                st.markdown("#### Matching Probes")
-                for probe in filtered_probes[:5]:  # Limit to 5 suggestions
-                    status_color = {
-                        'Instock': '#90EE90',
-                        'Calibrated': '#98FB98',
-                        'Shipped': '#ADD8E6',
-                        'Scraped': '#FFB6C6'
-                    }.get(probe['status'], '#FFFFFF')
+            # Create a styled table for probe display
+            for probe in filtered_probes:
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                     
-                    col1, col2 = st.columns([4, 1])
                     with col1:
-                        st.markdown(
-                            f"""
-                            <div style="
-                                padding: 8px;
-                                border: 1px solid #ddd;
-                                border-radius: 4px;
-                                margin-bottom: 4px;
-                                background-color: white;
-                            ">
-                                <span style="font-weight: bold;">{probe['serial']}</span><br/>
-                                <span style="color: #666;">{probe['type']} - {probe['manufacturer']}</span>
+                        st.markdown(f"""
+                            <div style='padding: 10px; background: #f8f9fa; border-radius: 5px;'>
+                                <strong>{probe['serial']}</strong><br/>
+                                {probe['type']}
                             </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
+                        """, unsafe_allow_html=True)
+                    
                     with col2:
+                        status_color = {
+                            'Instock': '#FFD700',
+                            'Calibrated': '#90EE90',
+                            'Shipped': '#87CEEB',
+                            'Scraped': '#FFB6C6'
+                        }.get(probe['status'], '#FFFFFF')
+                        
+                        st.markdown(f"""
+                            <div style='padding: 10px; background: {status_color}; border-radius: 5px;'>
+                                Status: {probe['status']}<br/>
+                                {probe['calibration_status']}
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        st.markdown(f"""
+                            <div style='padding: 10px; background: #f8f9fa; border-radius: 5px;'>
+                                KETOS P/N: {probe['ketos_pn']}<br/>
+                                Entry: {probe['entry_date']}
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col4:
                         if st.button("Select", key=f"select_{probe['serial']}"):
-                            st.session_state.selected_probe = probe['serial']
-                            st.session_state.search_query = probe['display']
-                            st.rerun()
-            else:
-                st.info("No matching probes found.")
-
-        return st.session_state.get('selected_probe')
+                            return probe['serial']
+                    
+                    st.markdown("---")
+        else:
+            st.info("No matching probes found.")
+    
+    return None
 
 def render_ph_calibration():
-    """Render pH probe calibration form."""
-    st.markdown('<h3 style="font-family: Arial; color: #0071ba;">pH Calibration</h3>', unsafe_allow_html=True)
+    """Render pH probe calibration form with validation."""
+    st.markdown('<h3 style="color: #0071ba;">pH Calibration</h3>', unsafe_allow_html=True)
     ph_data = {}
-    for idx, (buffer_label, color) in enumerate([("pH 7", "#f8f1f1"), ("pH 4", "#e8f8f2"), ("pH 10", "#e8f0f8")]):
-        st.markdown(
-            f'<div style="background-color: {color}; border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">'
-            f'<h4 style="font-family: Arial; color: #333;">{buffer_label} Buffer</h4>',
-            unsafe_allow_html=True,
+    
+    # Temperature measurement
+    col1, col2 = st.columns(2)
+    with col1:
+        ph_data['temperature'] = st.number_input(
+            "Solution Temperature (°C)",
+            min_value=10.0,
+            max_value=40.0,
+            value=25.0,
+            step=0.1,
+            help="Temperature must be between 10-40°C"
         )
+
+    # Buffer solutions
+    for idx, (buffer_label, color) in enumerate([
+        ("pH 7", "#f8f1f1"),
+        ("pH 4", "#e8f8f2"),
+        ("pH 10", "#e8f0f8")
+    ]):
+        st.markdown(
+            f'<div style="background-color: {color}; border: 1px solid #ccc; '
+            f'padding: 15px; border-radius: 8px; margin-bottom: 15px;">',
+            unsafe_allow_html=True
+        )
+        
+        st.markdown(f"#### {buffer_label} Buffer")
         col1, col2 = st.columns(2)
+        
         with col1:
-            ph_data[f"{buffer_label}_control"] = st.text_input(f"{buffer_label} Control Number", key=f"ph_{idx}_control_number")
-            ph_data[f"{buffer_label}_exp"] = st.date_input(f"{buffer_label} Expiration Date", key=f"ph_{idx}_expiration")
-            ph_data[f"{buffer_label}_opened"] = st.date_input(f"{buffer_label} Date Opened", key=f"ph_{idx}_date_opened")
+            # Buffer solution details
+            ph_data[f"{buffer_label}_control"] = st.text_input(
+                f"{buffer_label} Control Number",
+                key=f"ph_{idx}_control",
+                help="Enter the buffer solution control number"
+            )
+            ph_data[f"{buffer_label}_exp"] = st.date_input(
+                f"{buffer_label} Expiration Date",
+                min_value=date.today(),
+                key=f"ph_{idx}_exp"
+            )
+            ph_data[f"{buffer_label}_lot"] = st.text_input(
+                f"{buffer_label} Lot Number",
+                key=f"ph_{idx}_lot"
+            )
+
         with col2:
-            
-            ph_data[f"{buffer_label}_initial"] = st.number_input(f"{buffer_label} Initial Measurement (pH)", value=0.0, key=f"ph_{idx}_initial")
-            ph_data[f"{buffer_label}_calibrated"] = st.number_input(f"{buffer_label} Calibrated Measurement (pH)", value=0.0, key=f"ph_{idx}_calibrated")
-            ph_data[f"{buffer_label}_initial_mv"] = st.number_input(f"{buffer_label} Initial mV", value=0.0, key=f"ph_{idx}_initial_mv")
+            # Measurements
+            ph_data[f"{buffer_label}_initial_ph"] = st.number_input(
+                f"{buffer_label} Initial pH",
+                min_value=0.0,
+                max_value=14.0,
+                step=0.01,
+                key=f"ph_{idx}_initial_ph",
+                help=f"Expected range: {PH_RANGES[buffer_label][0]}-{PH_RANGES[buffer_label][1]}"
+            )
+            ph_data[f"{buffer_label}_initial_mv"] = st.number_input(
+                f"{buffer_label} Initial mV",
+                min_value=-2000.0,
+                max_value=2000.0,
+                step=0.1,
+                key=f"ph_{idx}_initial_mv"
+            )
+            ph_data[f"{buffer_label}_final_ph"] = st.number_input(
+                f"{buffer_label} Final pH",
+                min_value=0.0,
+                max_value=14.0,
+                step=0.01,
+                key=f"ph_{idx}_final_ph"
+            )
+            ph_data[f"{buffer_label}_final_mv"] = st.number_input(
+                f"{buffer_label} Final mV",
+                min_value=-2000.0,
+                max_value=2000.0,
+                step=0.1,
+                key=f"ph_{idx}_final_mv"
+            )
+
         st.markdown('</div>', unsafe_allow_html=True)
+    
     return ph_data
 
 def render_do_calibration():
-    """Render DO probe calibration form."""
-    st.markdown('<h3 style="font-family: Arial; color: #0071ba;">DO Calibration</h3>', unsafe_allow_html=True)
+    """Render DO probe calibration form with validation."""
+    st.markdown('<h3 style="color: #0071ba;">DO Calibration</h3>', unsafe_allow_html=True)
     do_data = {}
-    st.markdown('<h4 style="font-family: Arial; color: #0071ba;">Temperature</h4>', unsafe_allow_html=True)
+
+    # Temperature and Atmospheric Pressure
     col1, col2 = st.columns(2)
     with col1:
-        do_data['temp_initial'] = st.number_input("Initial Temperature (°C)", value=0.0, key="do_temp_initial")
-    with col2:
-        do_data['temp_calibrated'] = st.number_input("Calibrated Temperature (°C)", value=0.0, key="do_temp_calibrated")
-
-    for idx, label in enumerate(["0% DO Calibration", "100% DO Calibration"]):
-        st.markdown(
-            f'<div style="background-color: #e8f8f2; border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">'
-            f'<h4 style="font-family: Arial; color: #333;">{label}</h4>',
-            unsafe_allow_html=True,
+        do_data['temperature'] = st.number_input(
+            "Solution Temperature (°C)",
+            min_value=0.0,
+            max_value=50.0,
+            value=25.0,
+            step=0.1
         )
-        col1, col2 = st.columns(2)
-        with col1:
-            do_data[f"do_{idx}_control"] = st.text_input(f"{label} Control Number", key=f"do_{idx}_control_number")
-            do_data[f"do_{idx}_exp"] = st.date_input(f"{label} Expiration Date", key=f"do_{idx}_expiration")
-        with col2:
-            do_data[f"do_{idx}_opened"] = st.date_input(f"{label} Date Opened", key=f"do_{idx}_date_opened")
-            do_data[f"do_{idx}_initial"] = st.number_input(f"{label} Initial Measurement (%)", value=0.0, key=f"do_{idx}_initial")
-            do_data[f"do_{idx}_calibrated"] = st.number_input(f"{label} Calibrated Measurement (%)", value=0.0, key=f"do_{idx}_calibrated")
-        st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        do_data['pressure'] = st.number_input(
+            "Atmospheric Pressure (mmHg)",
+            min_value=500.0,
+            max_value=800.0,
+            value=760.0,
+            step=0.1
+        )
+
+    # Zero point calibration
+    st.markdown("""
+        <div style="background-color: #f8f1f1; border: 1px solid #ccc; 
+        padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+        <h4>Zero Point Calibration (0% DO)</h4>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        do_data['zero_control'] = st.text_input("Zero Solution Control Number")
+        do_data['zero_exp'] = st.date_input(
+            "Zero Solution Expiration Date",
+            min_value=date.today()
+        )
+    with col2:
+        do_data['zero_initial'] = st.number_input(
+            "Initial Reading (%)",
+            min_value=-0.1,
+            max_value=100.0,
+            step=0.1
+        )
+        do_data['zero_final'] = st.number_input(
+            "Final Reading (%)",
+            min_value=-0.1,
+            max_value=100.0,
+            step=0.1
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Saturation point calibration
+    st.markdown("""
+        <div style="background-color: #e8f8f2; border: 1px solid #ccc;
+        padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+        <h4>Saturation Point Calibration (100% DO)</h4>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        do_data['sat_initial'] = st.number_input(
+            "Initial Reading (%)",
+            min_value=0.0,
+            max_value=200.0,
+            step=0.1,
+            key="sat_initial"
+        )
+        do_data['sat_final'] = st.number_input(
+            "Final Reading (%)",
+            min_value=0.0,
+            max_value=200.0,
+            step=0.1,
+            key="sat_final"
+        )
+    with col2:
+        do_data['sat_mg_l'] = st.number_input(
+            "mg/L Reading",
+            min_value=0.0,
+            max_value=20.0,
+            step=0.1
+        )
+        do_data['sat_temp'] = st.number_input(
+            "Temperature (°C)",
+            min_value=0.0,
+            max_value=50.0,
+            step=0.1,
+            key="sat_temp"
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     return do_data
 
 def render_orp_calibration():
-    """Render ORP probe calibration form."""
-    st.markdown('<h3 style="font-family: Arial; color: #0071ba;">ORP Calibration</h3>', unsafe_allow_html=True)
+    """Render ORP probe calibration form with validation."""
+    st.markdown('<h3 style="color: #0071ba;">ORP Calibration</h3>', unsafe_allow_html=True)
     orp_data = {}
+
+    st.markdown("""
+        <div style="background-color: #f8f1f1; border: 1px solid #ccc;
+        padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+    """, unsafe_allow_html=True)
+    
     col1, col2 = st.columns(2)
     with col1:
-        orp_data['control_number'] = st.text_input("Control Number", key="orp_control_number")
-        orp_data['expiration'] = st.date_input("Expiration Date", key="orp_expiration")
+        orp_data['temperature'] = st.number_input(
+            "Solution Temperature (°C)",
+            min_value=0.0,
+            max_value=50.0,
+            value=25.0,
+            step=0.1
+        )
+        orp_data['control_number'] = st.text_input("Control Number")
+        orp_data['lot_number'] = st.text_input("Lot Number")
+        orp_data['expiration'] = st.date_input(
+            "Solution Expiration Date",
+            min_value=date.today()
+        )
+    
     with col2:
-        orp_data['date_opened'] = st.date_input("Date Opened", key="orp_date_opened")
-        orp_data['initial'] = st.number_input("Initial Measurement (mV)", value=0.0, key="orp_initial")
-        orp_data['calibrated'] = st.number_input("Calibrated Measurement (mV)", value=0.0, key="orp_calibrated")
+        orp_data['standard_value'] = st.number_input(
+            "Standard Solution Value (mV)",
+            value=225.0,
+            step=0.1
+        )
+        orp_data['initial_mv'] = st.number_input(
+            "Initial Reading (mV)",
+            min_value=-2000.0,
+            max_value=2000.0,
+            step=0.1
+        )
+        orp_data['final_mv'] = st.number_input(
+            "Final Reading (mV)",
+            min_value=-2000.0,
+            max_value=2000.0,
+            step=0.1
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
     return orp_data
 
 def render_ec_calibration():
-    """Render EC probe calibration form."""
-    st.markdown('<h3 style="font-family: Arial; color: #0071ba;">EC Calibration</h3>', unsafe_allow_html=True)
+    """Render EC probe calibration form with validation."""
+    st.markdown('<h3 style="color: #0071ba;">EC Calibration</h3>', unsafe_allow_html=True)
     ec_data = {}
-    for idx, label in enumerate(["84 μS/cm", "1413 μS/cm", "12.88 mS/cm"]):
-        st.markdown(
-            f'<div style="background-color: #f8f1f1; border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">'
-            f'<h4 style="font-family: Arial; color: #333;">{label} Calibration</h4>',
-            unsafe_allow_html=True,
+
+    # Temperature measurement
+    col1, col2 = st.columns(2)
+    with col1:
+        ec_data['temperature'] = st.number_input(
+            "Solution Temperature (°C)",
+            min_value=10.0,
+            max_value=40.0,
+            value=25.0,
+            step=0.1
         )
+
+    # Calibration points
+    standards = [
+        ("84 µS/cm", "#f8f1f1"),
+        ("1413 µS/cm", "#e8f8f2"),
+        ("12.88 mS/cm", "#e8f0f8")
+    ]
+
+    for std, color in standards:
+        st.markdown(
+            f'<div style="background-color: {color}; border: 1px solid #ccc; '
+            f'padding: 15px; border-radius: 8px; margin-bottom: 15px;">',
+            unsafe_allow_html=True
+        )
+        
+        st.markdown(f"#### {std} Standard")
         col1, col2 = st.columns(2)
+        
+        key_prefix = std.split()[0]
+        
         with col1:
-            ec_data[f"ec_{idx}_control"] = st.text_input(f"{label} Control Number", key=f"ec_{idx}_control_number")
-            ec_data[f"ec_{idx}_exp"] = st.date_input(f"{label} Expiration Date", key=f"ec_{idx}_expiration")
+            ec_data[f"{key_prefix}_control"] = st.text_input(
+                "Control Number",
+                key=f"ec_{key_prefix}_control"
+            )
+            ec_data[f"{key_prefix}_lot"] = st.text_input(
+                "Lot Number",
+                key=f"ec_{key_prefix}_lot"
+            )
+            ec_data[f"{key_prefix}_exp"] = st.date_input(
+                "Expiration Date",
+                min_value=date.today(),
+                key=f"ec_{key_prefix}_exp"
+            )
+        
         with col2:
-            ec_data[f"ec_{idx}_opened"] = st.date_input(f"{label} Date Opened", key=f"ec_{idx}_date_opened")
-            ec_data[f"ec_{idx}_initial"] = st.number_input(f"{label} Initial Measurement (μS/cm or mS/cm)", value=0.0, key=f"ec_{idx}_initial")
-            ec_data[f"ec_{idx}_calibrated"] = st.number_input(f"{label} Calibrated Measurement (μS/cm or mS/cm)", value=0.0, key=f"ec_{idx}_calibrated")
+            ec_data[f"{key_prefix}_initial"] = st.number_input(
+                "Initial Reading",
+                min_value=0.0,
+                step=0.1,
+                key=f"ec_{key_prefix}_initial"
+            )
+            ec_data[f"{key_prefix}_final"] = st.number_input(
+                "Final Reading",
+                min_value=0.0,
+                step=0.1,
+                key=f"ec_{key_prefix}_final"
+            )
+            ec_data[f"{key_prefix}_temp"] = st.number_input(
+                "Temperature (°C)",
+                min_value=0.0,
+                max_value=50.0,
+                value=25.0,
+                step=0.1,
+                key=f"ec_{key_prefix}_temp"
+            )
+
         st.markdown('</div>', unsafe_allow_html=True)
-    return ec_data
-
-def render_calibration_form(probe_type):
-    """Render appropriate calibration form based on the probe type."""
-    if probe_type == "pH Probe":
-        return render_ph_calibration()
-    elif probe_type == "DO Probe":
-        return render_do_calibration()
-    elif probe_type == "ORP Probe":
-        return render_orp_calibration()
-    elif probe_type == "EC Probe":
-        return render_ec_calibration()
-    return {}
-
-def find_probe(serial_number):
-    """Find a probe in the inventory by serial number."""
-    if 'inventory' not in st.session_state:
-        return None
     
-    inventory_df = st.session_state.inventory
-    probe = inventory_df[inventory_df['Serial Number'] == serial_number]
-    return probe.iloc[0] if not probe.empty else None
+    return ec_data
+# src/calibration_page.py - Part 3: Main Calibration Logic
 
-def update_probe_calibration(serial_number, calibration_data):
-    """Update probe calibration data in the inventory."""
-    try:
-        inventory_manager = st.session_state.inventory_manager
+def validate_calibration_data(probe_type, calibration_data):
+    """Validate calibration data based on probe type."""
+    errors = []
+    
+    # Common validations
+    if 'temperature' in calibration_data:
+        temp = float(calibration_data['temperature'])
+        if not (10 <= temp <= 40):
+            errors.append(f"Temperature {temp}°C is outside acceptable range (10-40°C)")
+
+    # Type-specific validations
+    if probe_type == "pH Probe":
+        for buffer_label in ["pH 4", "pH 7", "pH 10"]:
+            if f"{buffer_label}_initial_ph" in calibration_data:
+                initial_ph = float(calibration_data[f"{buffer_label}_initial_ph"])
+                final_ph = float(calibration_data[f"{buffer_label}_final_ph"])
+                
+                # Check readings are within range
+                min_val, max_val = PH_RANGES[buffer_label]
+                if not (min_val <= final_ph <= max_val):
+                    errors.append(f"{buffer_label} final reading ({final_ph}) outside acceptable range ({min_val}-{max_val})")
+                
+                # Check for drift
+                if abs(initial_ph - final_ph) > 0.5:
+                    errors.append(f"{buffer_label} shows excessive drift: {abs(initial_ph - final_ph)} pH units")
+
+    elif probe_type == "DO Probe":
+        # Zero point validation
+        if 'zero_final' in calibration_data:
+            zero_reading = float(calibration_data['zero_final'])
+            if not (-0.1 <= zero_reading <= 0.5):
+                errors.append(f"Zero point reading ({zero_reading}%) outside acceptable range (-0.1-0.5%)")
         
-        # Check if serial number exists
-        if serial_number not in st.session_state.inventory['Serial Number'].values:
-            st.error(f"Serial number {serial_number} not found in inventory")
-            return False
-            
-        probe_idx = st.session_state.inventory[st.session_state.inventory['Serial Number'] == serial_number].index[0]
-        
-        # Convert dates to strings before JSON serialization
-        converted_data = convert_dates_to_strings(calibration_data)
-        json_data = json.dumps(converted_data)
-        
-        # Update the DataFrame
-        st.session_state.inventory.at[probe_idx, 'Calibration Data'] = json_data
-        st.session_state.inventory.at[probe_idx, 'Last Modified'] = datetime.now().strftime("%Y-%m-%d")
-        st.session_state.inventory.at[probe_idx, 'Next Calibration'] = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
-        st.session_state.inventory.at[probe_idx, 'Status'] = "Calibrated"
-        
-        # Save to Google Sheets
-        success = inventory_manager.save_inventory(st.session_state.inventory)
-        
-        if success:
-            logger.info(f"Successfully updated calibration data for probe: {serial_number}")
-            return True
-            
-        logger.error(f"Failed to save calibration data for probe: {serial_number}")
-        return False
-            
-    except Exception as e:
-        logger.error(f"Error updating calibration data: {str(e)}")
-        return False
+        # Saturation point validation
+        if 'sat_final' in calibration_data:
+            sat_reading = float(calibration_data['sat_final'])
+            if not (95 <= sat_reading <= 105):
+                errors.append(f"Saturation point reading ({sat_reading}%) outside acceptable range (95-105%)")
+
+    elif probe_type == "ORP Probe":
+        if 'final_mv' in calibration_data:
+            mv_reading = float(calibration_data['final_mv'])
+            std_value = float(calibration_data.get('standard_value', 225))
+            if abs(mv_reading - std_value) > 15:
+                errors.append(f"ORP reading ({mv_reading} mV) deviates too much from standard ({std_value} mV)")
+
+    elif probe_type == "EC Probe":
+        standards = {
+            "84": (80, 88),
+            "1413": (1390, 1436),
+            "12880": (12750, 13010)
+        }
+        for std, (min_val, max_val) in standards.items():
+            if f"{std}_final" in calibration_data:
+                reading = float(calibration_data[f"{std}_final"])
+                if not (min_val <= reading <= max_val):
+                    errors.append(f"{std} µS/cm reading ({reading}) outside acceptable range ({min_val}-{max_val})")
+
+    return errors
 
 def calibration_page():
-    """Main page for probe calibration"""
-    st.markdown('<h1 style="font-family: Arial; color: #0071ba;">🔍 Probe Calibration</h1>', unsafe_allow_html=True)
+    """Main calibration page logic."""
+    st.markdown('<h1 style="color: #0071ba;">🔍 Probe Calibration</h1>', unsafe_allow_html=True)
 
-    # Initialize inventory manager if not exists
+    # Initialize inventory manager if needed
     if 'inventory_manager' not in st.session_state:
-        st.session_state.inventory_manager = InventoryManager()
-        st.session_state.inventory_manager.initialize_inventory()
+        st.error("Inventory manager not initialized. Please refresh the page.")
+        return
 
-    # Autocomplete search
+    # Enhanced probe search
     selected_serial = render_autocomplete_search()
     
     if selected_serial:
-        probe = find_probe(selected_serial)
+        # Get probe details
+        probe_df = st.session_state.inventory[
+            st.session_state.inventory['Serial Number'] == selected_serial
+        ]
         
-        if probe is None:
-            st.error("❌ Probe not found in inventory. Please check the serial number.")
+        if probe_df.empty:
+            st.error("❌ Probe not found in inventory.")
             return
-
-    # Add Drive settings in sidebar
-    with st.sidebar:
-        st.markdown("### Google Drive Settings")
-        if 'drive_folder_id' in st.session_state:
-            st.success(f"✅ Using folder ID: {st.session_state['drive_folder_id']}")
-            if st.button("Test Folder Access"):
-                drive_manager = st.session_state.get('drive_manager')
-                if drive_manager and drive_manager.verify_folder_access(st.session_state['drive_folder_id']):
-                    st.success("✅ Folder access verified!")
-                else:
-                    st.error("❌ Could not access folder. Check permissions.")
+            
+        probe = probe_df.iloc[0]
+        
+        # Display probe information in a card
+        st.markdown("""
+            <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; 
+            border-left: 5px solid #0071ba; margin-bottom: 20px;'>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([2,2,1])
+        with col1:
+            st.markdown(f"""
+                <h3 style='margin:0;'>{probe['Serial Number']}</h3>
+                <p style='margin:0;'>{probe['Type']}</p>
+                <p style='margin:0; color: #666;'>{probe['Manufacturer']}</p>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+                <p style='margin:0;'><strong>KETOS P/N:</strong> {probe['KETOS P/N']}</p>
+                <p style='margin:0;'><strong>Mfg P/N:</strong> {probe['Mfg P/N']}</p>
+                <p style='margin:0;'><strong>Entry Date:</strong> {probe['Entry Date']}</p>
+            """, unsafe_allow_html=True)
+        with col3:
+            status_color = {
+                'Instock': '#FFD700',
+                'Calibrated': '#90EE90',
+                'Shipped': '#87CEEB',
+                'Scraped': '#FFB6C6'
+            }.get(probe['Status'], '#FFFFFF')
+            
+            st.markdown(f"""
+                <div style='background-color: {status_color}; padding: 10px; 
+                border-radius: 5px; text-align: center;'>
+                    <strong>{probe['Status']}</strong>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Check probe status
+        if probe['Status'] == 'Shipped':
+            st.warning("⚠️ This probe has been shipped and cannot be calibrated.")
+            return
+            
+        if probe['Status'] == 'Scraped':
+            st.error("❌ This probe has been scraped and cannot be calibrated.")
+            return
+            
+        if probe['Status'] != 'Instock':
+            st.error("❌ Only probes with 'Instock' status can be calibrated.")
+            return
+        
+        # Calibration form based on probe type
+        st.markdown("### Calibration Data")
+        calibration_data = None
+        
+        if probe['Type'] == "pH Probe":
+            calibration_data = render_ph_calibration()
+        elif probe['Type'] == "DO Probe":
+            calibration_data = render_do_calibration()
+        elif probe['Type'] == "ORP Probe":
+            calibration_data = render_orp_calibration()
+        elif probe['Type'] == "EC Probe":
+            calibration_data = render_ec_calibration()
+        
+        # Save button
+        if calibration_data and st.button("Save Calibration", key="save_cal"):
+            # Validate calibration data
+            errors = validate_calibration_data(probe['Type'], calibration_data)
+            
+            if errors:
+                st.error("Calibration validation failed:")
+                for error in errors:
+                    st.warning(error)
+            else:
+                try:
+                    # Add metadata
+                    calibration_data['calibration_date'] = datetime.now().strftime("%Y-%m-%d")
+                    calibration_data['operator'] = st.session_state.get('username', 'Unknown')
+                    
+                    # Update probe in inventory
+                    probe_idx = probe_df.index[0]
+                    st.session_state.inventory.at[probe_idx, 'Calibration Data'] = json.dumps(calibration_data)
+                    st.session_state.inventory.at[probe_idx, 'Status'] = 'Calibrated'
+                    st.session_state.inventory.at[probe_idx, 'Last Modified'] = datetime.now().strftime("%Y-%m-%d")
+                    st.session_state.inventory.at[probe_idx, 'Next Calibration'] = (
+                        datetime.now() + timedelta(days=365)
+                    ).strftime("%Y-%m-%d")
+                    
+                    # Save to Google Sheets
+                    if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
+                        st.success("✅ Calibration data saved successfully!")
+                        
+                        # Show calibration certificate download option
+                        if st.button("Download Calibration Certificate"):
+                            generate_calibration_certificate(probe, calibration_data)
+                        
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Failed to save calibration data")
+                except Exception as e:
+                    st.error(f"Error saving calibration: {str(e)}")
+                    logger.error(f"Calibration save error: {str(e)}")
 
 if __name__ == "__main__":
     calibration_page()
