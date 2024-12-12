@@ -1,20 +1,19 @@
+# Set page config globally
 import streamlit as st
 st.set_page_config(
     page_title="Probe Management Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import pandas as pd
 from .inventory_manager import STATUS_COLORS
 
-def render_dashboard():
-    """Render the enhanced probe management dashboard with detailed insights."""
-    st.set_page_config(page_title="Probe Management Dashboard", layout="wide")
-    
-    # Custom CSS to improve appearance
+def apply_custom_css():
+    """Apply custom CSS styling to the dashboard."""
     st.markdown("""
         <style>
         .main .block-container {padding-top: 2rem;}
@@ -22,40 +21,24 @@ def render_dashboard():
         div[data-testid="stMetricDelta"] {font-size: 14px;}
         </style>
     """, unsafe_allow_html=True)
-    
-    # Dashboard Header with Logo and Title
+
+def render_header():
+    """Render the dashboard header with logo and title."""
     col1, col2 = st.columns([1, 4])
     with col1:
         st.image("logo.png", width=100)  # Make sure to add your logo file
     with col2:
         st.title("🎯 Probe Management Dashboard")
         st.markdown("Real-time monitoring and analytics for probe inventory and calibration")
-    
-    # Initialize inventory manager
-    if 'inventory_manager' not in st.session_state:
-        from .inventory_manager import InventoryManager
-        st.session_state.inventory_manager = InventoryManager()
-        st.session_state.inventory_manager.initialize_inventory()
 
-    inventory_df = st.session_state.inventory
-
-    if inventory_df is None or inventory_df.empty:
-        st.warning("⚠️ No inventory data available. Please check the data source connection.")
-        return
-
-    # Data Validation
-    required_columns = ['Serial Number', 'Type', 'Status', 'Entry Date', 'Last Modified', 'Next Calibration']
-    missing_columns = [col for col in required_columns if col not in inventory_df.columns]
-    if missing_columns:
-        st.error(f"❌ Critical: Missing required columns: {', '.join(missing_columns)}")
-        return
-
-    # Key Metrics Section
+def render_kpi_metrics(inventory_df):
+    """Render the Key Performance Indicators section."""
     st.markdown("### 📊 Key Performance Indicators")
     col1, col2, col3, col4, col5 = st.columns(5)
     
+    total_probes = len(inventory_df)
+    
     with col1:
-        total_probes = len(inventory_df)
         st.metric(
             "Total Inventory",
             f"{total_probes:,}",
@@ -103,12 +86,12 @@ def render_dashboard():
             help="Probes currently in the field"
         )
 
-    # Interactive Analysis Section
+def render_analysis_charts(inventory_df):
+    """Render the inventory analysis charts."""
     st.markdown("### 📈 Inventory Analysis")
     col1, col2 = st.columns(2)
     
     with col1:
-        # Status Distribution Chart
         status_counts = inventory_df['Status'].value_counts()
         fig_status = go.Figure(data=[
             go.Pie(
@@ -126,7 +109,6 @@ def render_dashboard():
         st.plotly_chart(fig_status, use_container_width=True)
         
     with col2:
-        # Probe Type Distribution
         type_counts = inventory_df['Type'].value_counts()
         fig_type = px.bar(
             x=type_counts.index,
@@ -137,10 +119,10 @@ def render_dashboard():
         fig_type.update_layout(height=400)
         st.plotly_chart(fig_type, use_container_width=True)
 
-    # Calibration Timeline
+def render_calibration_section(inventory_df):
+    """Render the calibration management section."""
     st.markdown("### 📅 Calibration Management")
     
-    # Filter options
     col1, col2 = st.columns([2, 3])
     with col1:
         days_filter = st.slider(
@@ -151,7 +133,6 @@ def render_dashboard():
             step=7
         )
     
-    # Upcoming Calibrations Table
     upcoming_cals = inventory_df[
         (inventory_df['Status'] == 'Calibrated') & 
         (pd.to_datetime(inventory_df['Next Calibration']) <= datetime.now() + timedelta(days=days_filter))
@@ -184,7 +165,8 @@ def render_dashboard():
     else:
         st.info("✓ No calibrations due within the selected timeframe")
 
-    # Recent Activity Log
+def render_recent_activity(inventory_df):
+    """Render the recent activity section."""
     st.markdown("### 📝 Recent Activity")
     recent_df = inventory_df.sort_values('Last Modified', ascending=False).head(10)
     
@@ -206,7 +188,8 @@ def render_dashboard():
                 </div>
             """, unsafe_allow_html=True)
 
-    # Add export functionality
+def render_export_section(inventory_df):
+    """Render the data export section."""
     st.markdown("### 📤 Export Data")
     if st.button("Download Full Report"):
         csv = inventory_df.to_csv(index=False)
@@ -216,6 +199,40 @@ def render_dashboard():
             file_name=f"probe_inventory_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
+
+def render_dashboard():
+    """Main function to render the dashboard."""
+    # Apply custom CSS
+    apply_custom_css()
+    
+    # Render header
+    render_header()
+    
+    # Initialize inventory manager
+    if 'inventory_manager' not in st.session_state:
+        from .inventory_manager import InventoryManager
+        st.session_state.inventory_manager = InventoryManager()
+        st.session_state.inventory_manager.initialize_inventory()
+
+    inventory_df = st.session_state.inventory
+
+    if inventory_df is None or inventory_df.empty:
+        st.warning("⚠️ No inventory data available. Please check the data source connection.")
+        return
+
+    # Data Validation
+    required_columns = ['Serial Number', 'Type', 'Status', 'Entry Date', 'Last Modified', 'Next Calibration']
+    missing_columns = [col for col in required_columns if col not in inventory_df.columns]
+    if missing_columns:
+        st.error(f"❌ Critical: Missing required columns: {', '.join(missing_columns)}")
+        return
+
+    # Render each section
+    render_kpi_metrics(inventory_df)
+    render_analysis_charts(inventory_df)
+    render_calibration_section(inventory_df)
+    render_recent_activity(inventory_df)
+    render_export_section(inventory_df)
 
 if __name__ == "__main__":
     render_dashboard()
