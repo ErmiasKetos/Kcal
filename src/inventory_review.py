@@ -198,22 +198,24 @@ def render_advanced_filters(df):
 
     return filtered_df
 
+
 def render_inventory_table(filtered_df):
-    """Render the inventory data table with enhanced features."""
-    # Column configuration
+    """Render the inventory data table."""
+    # Configure columns with colored status
     column_config = {
-        "Serial Number": st.column_config.TextColumn(
+        "Serial Number": st.column_config.Column(
             "Serial Number",
             help="Click to manage probe",
+            required=True,
             width="medium"
         ),
         "Type": st.column_config.SelectboxColumn(
             "Type",
             help="Type of probe",
             width="medium",
-            options=sorted(filtered_df['Type'].unique())
+            options=sorted(filtered_df['Type'].unique().tolist())
         ),
-        "Status": st.column_config.TextColumn(
+        "Status": st.column_config.Column(
             "Status",
             help="Current status of the probe",
             width="small"
@@ -245,39 +247,9 @@ def render_inventory_table(filtered_df):
         )
     }
 
-    # Add probe action handlers
-    for idx, row in filtered_df.iterrows():
-        if st.button(row['Serial Number'], key=f"probe_{row['Serial Number']}"):
-            with st.expander(f"Actions for {row['Serial Number']}", expanded=True):
-                action = st.radio(
-                    "Choose action:",
-                    ["Calibrate", "Change Status"],
-                    key=f"action_{row['Serial Number']}"
-                )
-                
-                if action == "Calibrate":
-                    if st.button("Go to Calibration", key=f"cal_{row['Serial Number']}"):
-                        st.session_state.selected_probe = row['Serial Number']
-                        st.session_state.page = "Probe Calibration"
-                        st.rerun()
-                
-                elif action == "Change Status":
-                    new_status = st.selectbox(
-                        "New Status:",
-                        ["Instock", "Calibrated", "Shipped", "Scraped"],
-                        key=f"status_{row['Serial Number']}"
-                    )
-                    
-                    if st.button("Update Status", key=f"update_{row['Serial Number']}"):
-                        if st.session_state.inventory_manager.update_probe_status(row['Serial Number'], new_status):
-                            st.success(f"Status updated to {new_status}")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Failed to update status")
-
-    # Apply status colors
-    filtered_df['Status'] = filtered_df['Status'].apply(
+    # Apply colored status
+    display_df = filtered_df.copy()
+    display_df['Status'] = display_df['Status'].apply(
         lambda x: f"""
             <div style='
                 background-color: {STATUS_COLORS.get(x, "#CCCCCC")}40;
@@ -292,7 +264,7 @@ def render_inventory_table(filtered_df):
         """
     )
 
-    # Render table
+    # Add table styling
     st.markdown("""
         <style>
             .stDataFrame td {
@@ -305,15 +277,52 @@ def render_inventory_table(filtered_df):
         </style>
     """, unsafe_allow_html=True)
     
-    return st.data_editor(
-        filtered_df,
+    # Render table and get edited data
+    edited_df = st.data_editor(
+        display_df,
         column_config=column_config,
         use_container_width=True,
         hide_index=True,
         num_rows="dynamic",
-        key="inventory_editor"
+        key="inventory_editor",
+        on_change=handle_table_click
     )
 
+    return edited_df
+
+def handle_table_click():
+    """Handle clicks in the table."""
+    if 'edited_rows' in st.session_state.inventory_editor:
+        for idx, changes in st.session_state.inventory_editor['edited_rows'].items():
+            if 'Serial Number' in changes:
+                serial = changes['Serial Number']
+                # Create popup for actions
+                with st.popover(f"Actions for {serial}"):
+                    action = st.radio(
+                        "Choose action:",
+                        ["Calibrate", "Change Status"],
+                        key=f"action_{serial}"
+                    )
+                    
+                    if action == "Calibrate":
+                        if st.button("Go to Calibration"):
+                            st.session_state.selected_probe = serial
+                            st.session_state.page = "Probe Calibration"
+                            st.rerun()
+                    
+                    elif action == "Change Status":
+                        new_status = st.selectbox(
+                            "New Status:",
+                            ["Instock", "Calibrated", "Shipped", "Scraped"],
+                            key=f"status_{serial}"
+                        )
+                        if st.button("Update Status"):
+                            if st.session_state.inventory_manager.update_probe_status(serial, new_status):
+                                st.success(f"Status updated to {new_status}")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("Failed to update status")
 def render_tools_section(filtered_df, df):
     """Render tools and system status section."""
     col1, col2 = st.columns(2)
