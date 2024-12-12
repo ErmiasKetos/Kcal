@@ -499,9 +499,9 @@ def render_do_tips(tips, border_color):
     st.markdown(tips_html, unsafe_allow_html=True)
 
 def render_do_calibration():
-    """Render DO probe calibration form with mg/L measurements."""
+    """Render DO probe calibration form."""
     st.markdown("""
-        <div class='calibration-header'>
+        <div style='background: linear-gradient(90deg, #0071ba, #00a6fb); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
             <h2 style='margin:0;'>💧 DO Probe Calibration</h2>
             <p style='margin:5px 0 0 0;'>Two-point calibration for Dissolved Oxygen measurement (mg/L)</p>
         </div>
@@ -512,15 +512,15 @@ def render_do_calibration():
     # General Guidelines
     with st.expander("📌 General Calibration Guidelines", expanded=True):
         st.markdown("""
-        * Keep probe membrane clean and free from debris
-        * Allow sufficient warm-up time (15-20 minutes)
-        * Avoid air bubbles on the membrane during calibration
-        * Maintain consistent temperature during calibration
-        * Perform calibration in order: 0 mg/L then saturation
-        * Replace electrolyte solution if readings are unstable
+        * Ensure probe membrane is clean and undamaged
+        * Allow 15-20 minutes warm-up time
+        * Calibrate in order: 0 mg/L then saturation point
+        * Keep temperature stable during calibration
+        * Avoid air bubbles on membrane surface
+        * Replace electrolyte if readings are unstable
         """)
 
-    # Temperature and Atmospheric Pressure Section
+    # Environmental Conditions
     st.markdown("### 🌡️ Environmental Conditions")
     col1, col2 = st.columns(2)
     with col1:
@@ -542,105 +542,109 @@ def render_do_calibration():
             help="Local atmospheric pressure affects DO saturation"
         )
 
-    # Zero Point (0 mg/L DO) Calibration
-    st.markdown("### Zero Point Calibration (0 mg/L DO)")
-    with st.container():
-        st.markdown("""
-            <div class='calibration-card' style='border-left-color: #FF6B6B;'>
-                <div class='info-grid'>
-                    <div class='info-item'>
-                        <strong>📊 Expected Range</strong><br/>
-                        0.0 - 0.2 mg/L
-                    </div>
-                    <div class='info-item'>
-                        <strong>⏱️ Stability Time</strong><br/>
-                        2-3 minutes
-                    </div>
-                    <div class='info-item'>
-                        <strong>🎯 Target Value</strong><br/>
-                        0.0 mg/L
-                    </div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+    # Calibration points configuration
+    cal_points = [
+        {
+            "name": "Zero Point",
+            "unit": "mg/L",
+            "color": "#FF6B6B",
+            "icon": "⭕",
+            "desc": "0 mg/L Calibration",
+            "range": "0.0 - 0.2 mg/L",
+            "expected": "0.0 mg/L",
+            "tips": [
+                "Use fresh sodium sulfite solution",
+                "Ensure probe tip is fully submerged",
+                "Stir gently to remove trapped bubbles",
+                "Wait for stable reading (2-3 minutes)",
+                "Verify zero point stability"
+            ]
+        },
+        {
+            "name": "Saturation Point",
+            "unit": "mg/L",
+            "color": "#4ECDC4",
+            "icon": "💫",
+            "desc": "Saturation Calibration",
+            "range": "8.2 - 8.7 mg/L at 25°C",
+            "expected": "8.4 mg/L at 25°C",
+            "tips": [
+                "Use water-saturated air method",
+                "Keep probe in sealed, moist environment",
+                "Maintain stable temperature",
+                "Allow 3-5 minutes for stabilization",
+                "Avoid direct sunlight during calibration"
+            ]
+        }
+    ]
 
-        col1, col2 = st.columns(2)
-        with col1:
-            do_data['zero_control'] = st.text_input(
-                "Zero Solution Control Number",
-                help="Enter the control number of the zero oxygen solution"
-            )
-            do_data['zero_exp'] = st.date_input(
-                "Solution Expiration Date",
-                help="Enter the expiration date of the zero oxygen solution"
-            )
+    # Calibration sections for each point
+    for point in cal_points:
+        st.markdown(f"### {point['icon']} {point['name']} Calibration ({point['unit']})")
         
-        with col2:
-            do_data['zero_initial'] = st.number_input(
-                "Initial Reading (mg/L)",
-                min_value=0.0,
-                max_value=20.0,
-                step=0.01,
-                help="Initial DO reading before calibration"
-            )
-            do_data['zero_final'] = st.number_input(
-                "Final Reading (mg/L)",
-                min_value=0.0,
-                max_value=20.0,
-                step=0.01,
-                help="Should be close to 0.0 mg/L"
-            )
+        # Info box
+        st.info(f"""
+            📊 Expected Range: {point['range']}  |  
+            🎯 Target Value: {point['expected']}  |  
+            ⏱️ Stability Time: 2-3 minutes
+        """)
 
-    # Saturation Point Calibration
-    st.markdown("### Saturation Point Calibration")
-    with st.container():
-        st.markdown("""
-            <div class='calibration-card' style='border-left-color: #4ECDC4;'>
-                <div class='info-grid'>
-                    <div class='info-item'>
-                        <strong>📊 Expected Range</strong><br/>
-                        8.2 - 8.7 mg/L at 25°C
-                    </div>
-                    <div class='info-item'>
-                        <strong>⏱️ Stability Time</strong><br/>
-                        3-5 minutes
-                    </div>
-                    <div class='info-item'>
-                        <strong>🎯 Target Value</strong><br/>
-                        8.4 mg/L at 25°C
-                    </div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # Tips section
+        with st.expander("💡 Important Tips", expanded=True):
+            for tip in point['tips']:
+                st.markdown(f"• {tip}")
 
+        # Input fields
         col1, col2 = st.columns(2)
-        with col1:
-            do_data['sat_initial'] = st.number_input(
-                "Initial Reading (mg/L)",
-                min_value=0.0,
-                max_value=20.0,
-                step=0.01,
-                key="sat_initial",
-                help="Initial saturation reading"
-            )
-            do_data['sat_final'] = st.number_input(
-                "Final Reading (mg/L)",
-                min_value=0.0,
-                max_value=20.0,
-                step=0.01,
-                key="sat_final",
-                help="Should be within expected range for temperature"
-            )
         
+        with col1:
+            st.markdown("#### 📋 Solution Information")
+            if point['name'] == "Zero Point":
+                do_data['zero_control'] = st.text_input(
+                    "Control Number",
+                    help="Enter the zero solution control number"
+                )
+                do_data['zero_exp'] = st.date_input(
+                    "Solution Expiration Date",
+                    help="Zero solution expiration date"
+                )
+
         with col2:
-            do_data['sat_temp'] = st.number_input(
-                "Temperature (°C)",
-                min_value=0.0,
-                max_value=50.0,
-                step=0.1,
-                key="sat_temp",
-                help="Temperature during saturation calibration"
-            )
+            st.markdown("#### 📊 Measurements")
+            prefix = 'zero' if point['name'] == "Zero Point" else 'sat'
+            
+            measurement_cols = st.columns(2)
+            with measurement_cols[0]:
+                do_data[f'{prefix}_initial'] = st.number_input(
+                    "Initial Reading (mg/L)",
+                    min_value=0.0,
+                    max_value=20.0,
+                    step=0.01,
+                    key=f"{prefix}_initial",
+                    help=f"Initial DO reading for {point['name']}"
+                )
+            
+            with measurement_cols[1]:
+                do_data[f'{prefix}_final'] = st.number_input(
+                    "Final Reading (mg/L)",
+                    min_value=0.0,
+                    max_value=20.0,
+                    step=0.01,
+                    key=f"{prefix}_final",
+                    help=f"Final stabilized reading for {point['name']}"
+                )
+
+            # Validation warnings
+            if point['name'] == "Zero Point":
+                if do_data[f'{prefix}_final'] > 0.2:
+                    st.warning("⚠️ Zero point reading is higher than recommended (>0.2 mg/L)")
+            else:
+                temp = do_data['temperature']
+                if 20 <= temp <= 30:
+                    if not (8.2 <= do_data[f'{prefix}_final'] <= 8.7):
+                        st.warning("⚠️ Saturation reading is outside expected range (8.2-8.7 mg/L)")
+
+        st.markdown("---")
 
     return do_data
 
