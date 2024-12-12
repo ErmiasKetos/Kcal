@@ -687,78 +687,88 @@ def get_searchable_probes():
     
     return searchable_probes
 
+
 def calibration_page():
     """Main page for probe calibration."""
     st.markdown('<h1 style="color: #0071ba;">🔍 Probe Calibration</h1>', unsafe_allow_html=True)
 
-    # Initialize inventory manager if needed
     if 'inventory_manager' not in st.session_state:
         st.error("Inventory manager not initialized")
         return
 
-    # Clean search section
-    st.markdown("### Select Probe")
-    search_query = st.text_input(
-        "🔍 Search by Serial Number or Type",
-        placeholder="Enter Serial Number or Probe Type...",
-        help="Search for a probe to calibrate"
-    ).strip().lower()
+    # Show search only if no probe is selected or if user wants to search again
+    if not hasattr(st.session_state, 'selected_probe') or st.session_state.get('show_search', False):
+        st.markdown("### Select Probe")
+        search_query = st.text_input(
+            "🔍 Search by Serial Number or Type",
+            placeholder="Enter Serial Number or Probe Type...",
+            help="Search for a probe to calibrate"
+        ).strip().lower()
 
-    # Get and filter probes
-    probes = get_searchable_probes()
-    if search_query and probes:
-        filtered_probes = [
-            probe for probe in probes
-            if search_query in probe['search_text'].lower()
-        ]
-        
-        if filtered_probes:
-            # Display matching probes in a clean table format
-            st.markdown("#### Matching Probes")
-            cols = st.columns([3, 2, 2, 1])
-            cols[0].markdown("**Serial Number**")
-            cols[1].markdown("**Type**")
-            cols[2].markdown("**Status**")
-            st.markdown("---")
-
-            for probe in filtered_probes:
+        # Get and filter probes
+        probes = get_searchable_probes()
+        if search_query and probes:
+            filtered_probes = [
+                probe for probe in probes
+                if search_query in probe['search_text'].lower()
+            ]
+            
+            if filtered_probes:
+                st.markdown("#### Matching Probes")
                 cols = st.columns([3, 2, 2, 1])
-                with cols[0]:
-                    st.write(probe['serial'])
-                with cols[1]:
-                    st.write(probe['type'])
-                with cols[2]:
-                    status_color = {
-                        'Instock': '#FFD700',
-                        'Calibrated': '#90EE90',
-                        'Shipped': '#87CEEB',
-                        'Scraped': '#FFB6C6'
-                    }.get(probe['status'], '#FFFFFF')
-                    st.markdown(f"""
-                        <span style='
-                            background-color: {status_color}40;
-                            padding: 3px 8px;
-                            border-radius: 12px;
-                            font-size: 0.9em;
-                        '>
-                            {probe['status']}
-                        </span>
-                    """, unsafe_allow_html=True)
-                with cols[3]:
-                    if st.button("Select", key=f"select_{probe['serial']}"):
-                        st.session_state.selected_probe = probe['serial']
-                        st.rerun()
-        else:
-            st.info("No matching probes found.")
+                cols[0].markdown("**Serial Number**")
+                cols[1].markdown("**Type**")
+                cols[2].markdown("**Status**")
+                st.markdown("---")
+
+                for probe in filtered_probes:
+                    cols = st.columns([3, 2, 2, 1])
+                    with cols[0]:
+                        st.write(probe['serial'])
+                    with cols[1]:
+                        st.write(probe['type'])
+                    with cols[2]:
+                        status_color = {
+                            'Instock': '#FFD700',
+                            'Calibrated': '#90EE90',
+                            'Shipped': '#87CEEB',
+                            'Scraped': '#FFB6C6'
+                        }.get(probe['status'], '#FFFFFF')
+                        st.markdown(f"""
+                            <span style='
+                                background-color: {status_color}40;
+                                padding: 3px 8px;
+                                border-radius: 12px;
+                                font-size: 0.9em;
+                            '>
+                                {probe['status']}
+                            </span>
+                        """, unsafe_allow_html=True)
+                    with cols[3]:
+                        if st.button("Select", key=f"select_{probe['serial']}"):
+                            st.session_state.selected_probe = probe['serial']
+                            st.session_state.show_search = False  # Hide search results
+                            st.rerun()
+            else:
+                st.info("No matching probes found.")
 
     # Show calibration form if probe is selected
     if hasattr(st.session_state, 'selected_probe'):
         selected_serial = st.session_state.selected_probe
         probe = find_probe(selected_serial)
         
+        # Add a button to search for a different probe
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            if st.button("🔍 Search Different Probe"):
+                st.session_state.show_search = True
+                del st.session_state.selected_probe
+                st.rerun()
+        
         if probe is None:
             st.error("❌ Probe not found in inventory.")
             return
+      
             
         # Clear separation between search and calibration
         st.markdown("---")
