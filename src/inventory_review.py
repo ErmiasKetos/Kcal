@@ -218,7 +218,8 @@ def render_advanced_filters(df):
     return filtered_df
 
 def render_inventory_table(filtered_df):
-    """Render the inventory data table with editing capabilities."""
+    """Render the inventory data table with the original columns."""
+    # Original column configuration
     column_config = {
         "Serial Number": st.column_config.TextColumn(
             "Serial Number",
@@ -229,7 +230,22 @@ def render_inventory_table(filtered_df):
             "Type",
             help="Type of probe",
             width="medium",
-            options=["pH Probe", "DO Probe", "ORP Probe", "EC Probe"]
+            options=sorted(filtered_df['Type'].unique().tolist())
+        ),
+        "Manufacturer": st.column_config.TextColumn(
+            "Manufacturer",
+            help="Probe manufacturer",
+            width="medium"
+        ),
+        "KETOS P/N": st.column_config.TextColumn(
+            "KETOS P/N",
+            help="KETOS part number",
+            width="medium"
+        ),
+        "Mfg P/N": st.column_config.TextColumn(
+            "Mfg P/N",
+            help="Manufacturer part number",
+            width="medium"
         ),
         "Status": st.column_config.SelectboxColumn(
             "Status",
@@ -242,20 +258,26 @@ def render_inventory_table(filtered_df):
             help="Date when the probe was added to inventory",
             width="small"
         ),
+        "Last Modified": st.column_config.TextColumn(
+            "Last Modified",
+            help="Last modification date",
+            width="small"
+        ),
         "Next Calibration": st.column_config.TextColumn(
             "Next Calibration",
             help="Date when next calibration is due",
             width="small"
         ),
-        "Last Modified": st.column_config.TextColumn(
-            "Last Modified",
-            help="Last modification date",
+        "Change Date": st.column_config.TextColumn(
+            "Change Date",
+            help="Date of last status change",
             width="small"
         )
     }
 
+    # Display full dataframe with all original columns
     return st.data_editor(
-        filtered_df[ESSENTIAL_COLUMNS],
+        filtered_df,  # Use entire dataframe instead of selected columns
         column_config=column_config,
         use_container_width=True,
         hide_index=True,
@@ -263,25 +285,29 @@ def render_inventory_table(filtered_df):
         key="inventory_editor"
     )
 
+
 def save_inventory_changes(edited_df, original_df):
     """Save changes made to the inventory."""
-    if not edited_df.equals(original_df[ESSENTIAL_COLUMNS]):
-        if st.button("Save Changes", type="primary"):
-            try:
-                # Update the main inventory
-                for idx, row in edited_df.iterrows():
-                    if idx in st.session_state.inventory.index:
-                        for col in ESSENTIAL_COLUMNS:
-                            st.session_state.inventory.loc[idx, col] = row[col]
-                
-                if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
-                    st.success("✅ Changes saved successfully!")
-                    time.sleep(1)
-                    st.rerun()
-                return True
-            except Exception as e:
-                st.error(f"Error saving changes: {str(e)}")
-                return False
+    if not edited_df.equals(original_df):
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("Save Changes", type="primary"):
+                try:
+                    # Update all columns in the main inventory
+                    for idx, row in edited_df.iterrows():
+                        if idx in st.session_state.inventory.index:
+                            st.session_state.inventory.loc[idx] = row
+                            # Update Last Modified date
+                            st.session_state.inventory.at[idx, 'Last Modified'] = datetime.now().strftime("%Y-%m-%d")
+                    
+                    if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
+                        st.success("✅ Changes saved successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                    return True
+                except Exception as e:
+                    st.error(f"Error saving changes: {str(e)}")
+                    return False
     return False
 
 def render_tools_section(filtered_df, df):
@@ -347,6 +373,5 @@ def inventory_review_page():
     with tab3:
         # Tools tab content
         render_tools_section(filtered_df, df)
-
 if __name__ == "__main__":
     inventory_review_page()
