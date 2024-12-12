@@ -296,7 +296,6 @@ CALIBRATION_STYLES = """
 """
 
 def render_ph_calibration():
-def render_ph_calibration():
     """Render pH probe calibration form."""
     st.markdown("""
         <div style='background: linear-gradient(90deg, #0071ba, #00a6fb); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
