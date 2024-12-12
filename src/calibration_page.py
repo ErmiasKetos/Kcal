@@ -360,6 +360,7 @@ def render_ph_calibration():
     )
 
     # Buffer Solutions
+
     buffers = [
         {
             "name": "pH 7",
@@ -367,7 +368,13 @@ def render_ph_calibration():
             "icon": "⚖️",
             "desc": "Neutral Buffer",
             "range": "6.98 - 7.02",
-            "expected_mv": "0 ±30 mV"
+            "expected_mv": "0 ±30 mV",
+            "tips": [
+                "Always start with pH 7 buffer",
+                "Rinse probe with DI water before immersion",
+                "Wait for stable reading (±0.01 pH)",
+                "Record offset reading after calibration"
+            ]
         },
         {
             "name": "pH 4",
@@ -375,7 +382,13 @@ def render_ph_calibration():
             "icon": "🔴",
             "desc": "Acidic Buffer",
             "range": "3.98 - 4.02",
-            "expected_mv": "+165 to +180 mV"
+            "expected_mv": "+165 to +180 mV",
+            "tips": [
+                "Use after pH 7 calibration",
+                "Ensure thorough rinsing between buffers",
+                "Check for rapid response",
+                "Calculate slope after calibration"
+            ]
         },
         {
             "name": "pH 10",
@@ -383,7 +396,13 @@ def render_ph_calibration():
             "icon": "🔵",
             "desc": "Basic Buffer",
             "range": "9.98 - 10.02",
-            "expected_mv": "-165 to -180 mV"
+            "expected_mv": "-165 to -180 mV",
+            "tips": [
+                "Final calibration point",
+                "Most sensitive to temperature",
+                "Verify slope calculation",
+                "Record all final readings"
+            ]
         }
     ]
 
@@ -400,6 +419,13 @@ def render_ph_calibration():
                         <strong>⚡ Expected mV</strong><br/>
                         {buffer['expected_mv']}
                     </div>
+                </div>
+
+                <div class='tips-container'>
+                    <strong>💡 Important Tips:</strong>
+                    <ul>
+                        {''.join(f'<li>{tip}</li>' for tip in buffer['tips'])}
+                    </ul>
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -472,14 +498,8 @@ def render_ph_calibration():
             if abs(ph_data['offset_mv']) > 30:
                 st.warning("⚠️ Offset is outside optimal range (±30 mV)")
 
-    # Slope Readings Section (after pH 4 and 7 buffers)
-    st.markdown("### 📈 Slope Calculation")
-    st.markdown("""
-        <div class='readings-section'>
-            <p><strong>Note:</strong> Slope is calculated using pH 4 and pH 7 buffer readings.</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
+    # Add slope input field
+    st.markdown("#### 📈 Slope Reading")
     ph_data['slope_mv'] = st.number_input(
         "Slope (mV/pH)",
         min_value=-65.0,
@@ -492,11 +512,8 @@ def render_ph_calibration():
     # Slope validation
     if ph_data['slope_mv'] > -50 or ph_data['slope_mv'] < -62:
         st.warning("⚠️ Slope is outside optimal range (-62 to -50 mV/pH)")
-    else:
-        st.success(f"✅ Slope is within optimal range: {ph_data['slope_mv']} mV/pH")
 
     return ph_data
-
 def render_do_tips(tips, border_color):
     """Helper function to render tips properly"""
     tips_html = f"""
