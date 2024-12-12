@@ -46,6 +46,7 @@ def render_inventory_stats(df):
             help="Probes that have been shipped"
         )
 
+
 def render_advanced_filters(df):
     """Enhanced advanced filtering options."""
     with st.expander("🔍 Advanced Filters", expanded=True):
@@ -79,10 +80,16 @@ def render_advanced_filters(df):
 
         with col3:
             # Date range filters
-            date_range = st.date_input(
-                "Entry Date Range",
-                value=(None, None),
-                help="Filter by entry date range"
+            start_date = st.date_input(
+                "Start Date",
+                value=datetime.now() - timedelta(days=30),
+                help="Filter from this date"
+            )
+            
+            end_date = st.date_input(
+                "End Date",
+                value=datetime.now(),
+                help="Filter until this date"
             )
             
             # Calibration status filter
@@ -148,11 +155,14 @@ def render_advanced_filters(df):
         filtered_df = filtered_df[filtered_df['KETOS P/N'].isin(ketos_pn_filter)]
 
     # Date range filter
-    if len(date_range) == 2 and date_range[0] and date_range[1]:
-        filtered_df = filtered_df[
-            (pd.to_datetime(filtered_df['Entry Date']) >= pd.to_datetime(date_range[0])) &
-            (pd.to_datetime(filtered_df['Entry Date']) <= pd.to_datetime(date_range[1]))
-        ]
+    try:
+        if start_date and end_date:
+            filtered_df = filtered_df[
+                (pd.to_datetime(filtered_df['Entry Date']) >= pd.to_datetime(start_date)) &
+                (pd.to_datetime(filtered_df['Entry Date']) <= pd.to_datetime(end_date))
+            ]
+    except Exception as e:
+        st.warning(f"Date filtering error: {str(e)}")
 
     # Calibration status filter
     if cal_status != "All":
@@ -177,21 +187,33 @@ def render_advanced_filters(df):
 
     # Quick filters
     if show_expired_cal:
-        filtered_df = filtered_df[
-            pd.to_datetime(filtered_df['Next Calibration']) <= datetime.now()
-        ]
+        try:
+            filtered_df = filtered_df[
+                pd.to_datetime(filtered_df['Next Calibration']) <= datetime.now()
+            ]
+        except Exception as e:
+            st.warning("Error filtering expired calibrations")
+            
     if show_recent_changes:
-        filtered_df = filtered_df[
-            pd.to_datetime(filtered_df['Last Modified']) >= datetime.now() - timedelta(days=7)
-        ]
+        try:
+            filtered_df = filtered_df[
+                pd.to_datetime(filtered_df['Last Modified']) >= datetime.now() - timedelta(days=7)
+            ]
+        except Exception as e:
+            st.warning("Error filtering recent changes")
+            
     if show_active_only:
         filtered_df = filtered_df[filtered_df['Status'].isin(['Instock', 'Calibrated'])]
+        
     if show_critical:
-        critical_mask = (
-            (filtered_df['Status'] == 'Instock') |
-            (pd.to_datetime(filtered_df['Next Calibration']) <= datetime.now() + timedelta(days=7))
-        )
-        filtered_df = filtered_df[critical_mask]
+        try:
+            critical_mask = (
+                (filtered_df['Status'] == 'Instock') |
+                (pd.to_datetime(filtered_df['Next Calibration']) <= datetime.now() + timedelta(days=7))
+            )
+            filtered_df = filtered_df[critical_mask]
+        except Exception as e:
+            st.warning("Error filtering critical items")
 
     # Sorting
     if sort_by != "None":
@@ -211,8 +233,8 @@ def render_advanced_filters(df):
         active_filters.append(f"Manufacturer: {', '.join(manufacturer_filter)}")
     if cal_status != "All":
         active_filters.append(f"Calibration Status: {cal_status}")
-    if len(date_range) == 2 and date_range[0] and date_range[1]:
-        active_filters.append(f"Date Range: {date_range[0]} to {date_range[1]}")
+    if start_date and end_date:
+        active_filters.append(f"Date Range: {start_date} to {end_date}")
     if filter_field != "None" and filter_value:
         active_filters.append(f"{filter_field}: {filter_value}")
     
