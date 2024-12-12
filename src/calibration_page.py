@@ -166,6 +166,7 @@ def render_autocomplete_search():
     
     return None
 
+
 def render_ph_calibration():
     """Render enhanced pH probe calibration form."""
     # Apply custom styles
@@ -211,8 +212,54 @@ def render_ph_calibration():
         </style>
     """, unsafe_allow_html=True)
 
-    # Buffer configurations (same as before)
-    buffer_configs = [...]  # Your buffer configurations here
+    # Complete buffer configurations
+    buffer_configs = [
+        {
+            "name": "pH 7",
+            "color": "#FFD700",
+            "icon": "⚖️",
+            "desc": "Neutral Buffer",
+            "range": "6.98 - 7.02",
+            "temp_coefficient": "±0.001 pH/°C",
+            "usage": "Primary calibration point",
+            "tips": [
+                "Always start with pH 7 buffer",
+                "Rinse probe with DI water before immersion",
+                "Wait for stable reading (±0.01 pH)"
+            ],
+            "expected_mv": "0 ±30 mV"
+        },
+        {
+            "name": "pH 4",
+            "color": "#FF6B6B",
+            "icon": "🔴",
+            "desc": "Acidic Buffer",
+            "range": "3.98 - 4.02",
+            "temp_coefficient": "±0.002 pH/°C",
+            "usage": "Low pH calibration point",
+            "tips": [
+                "Use after pH 7 calibration",
+                "Ensure thorough rinsing between buffers",
+                "Check for rapid response"
+            ],
+            "expected_mv": "+165 to +180 mV"
+        },
+        {
+            "name": "pH 10",
+            "color": "#4ECDC4",
+            "icon": "🔵",
+            "desc": "Basic Buffer",
+            "range": "9.98 - 10.02",
+            "temp_coefficient": "±0.003 pH/°C",
+            "usage": "High pH calibration point",
+            "tips": [
+                "Final calibration point",
+                "Most sensitive to temperature",
+                "Verify slope calculation"
+            ],
+            "expected_mv": "-165 to -180 mV"
+        }
+    ]
 
     ph_data = {}
 
@@ -233,8 +280,23 @@ def render_ph_calibration():
     # Buffer Calibration Sections
     for buffer in buffer_configs:
         with st.container():
-            # Buffer header
-            st.markdown(f"### {buffer['icon']} {buffer['name']} Buffer Solution")
+            # Buffer header with colored background
+            st.markdown(
+                f"""
+                <div style='
+                    padding: 10px; 
+                    border-radius: 8px; 
+                    background: {buffer['color']}20; 
+                    border-left: 4px solid {buffer['color']};
+                    margin-bottom: 10px;
+                '>
+                    <h3 style='margin: 0; color: {buffer['color']};'>
+                        {buffer['icon']} {buffer['name']} Buffer Solution - {buffer['desc']}
+                    </h3>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
             
             # Buffer information
             col1, col2, col3 = st.columns(3)
