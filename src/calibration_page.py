@@ -297,32 +297,28 @@ CALIBRATION_STYLES = """
 
 def render_ph_calibration():
     """Render enhanced pH probe calibration form."""
-    # Apply custom styles
     st.markdown("""
         <style>
-            .buffer-info {
-                padding: 15px;
-                background: #f8f9fa;
+            .calibration-header {
+                background: linear-gradient(90deg, #0071ba, #00a6fb);
+                color: white;
+                padding: 20px;
                 border-radius: 10px;
-                margin: 10px 0;
+                margin-bottom: 20px;
             }
             .info-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
+                display: flex;
                 gap: 15px;
                 margin: 10px 0;
+                flex-wrap: wrap;
             }
             .info-item {
-                padding: 10px;
-                background: white;
+                background: #f8f9fa;
+                padding: 10px 15px;
                 border-radius: 8px;
+                flex: 1;
+                min-width: 200px;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            .buffer-tips {
-                margin-top: 15px;
-                padding: 15px;
-                background: #e3f2fd;
-                border-radius: 8px;
             }
             .buffer-card {
                 background: white;
@@ -330,31 +326,47 @@ def render_ph_calibration():
                 border-radius: 10px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 margin-bottom: 20px;
+                border-left: 4px solid;
             }
-            .measurements {
+            .readings-section {
                 background: #f8f9fa;
                 padding: 15px;
                 border-radius: 8px;
                 margin-top: 15px;
+                border: 1px solid #e9ecef;
             }
         </style>
     """, unsafe_allow_html=True)
 
-    # Complete buffer configurations
-    buffer_configs = [
+    # Header
+    st.markdown("""
+        <div class='calibration-header'>
+            <h2 style='margin:0;'>🧪 pH Probe Calibration</h2>
+            <p style='margin:5px 0 0 0;'>Three-point calibration sequence</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    ph_data = {}
+
+    # Temperature measurement
+    st.markdown("### 🌡️ Temperature Settings")
+    ph_data['temperature'] = st.number_input(
+        "Solution Temperature (°C)",
+        min_value=10.0,
+        max_value=40.0,
+        value=25.0,
+        step=0.1,
+        help="Maintain temperature between 10-40°C for accurate calibration"
+    )
+
+    # Buffer Solutions
+    buffers = [
         {
             "name": "pH 7",
             "color": "#FFD700",
             "icon": "⚖️",
             "desc": "Neutral Buffer",
             "range": "6.98 - 7.02",
-            "temp_coefficient": "±0.001 pH/°C",
-            "usage": "Primary calibration point",
-            "tips": [
-                "Always start with pH 7 buffer",
-                "Rinse probe with DI water before immersion",
-                "Wait for stable reading (±0.01 pH)"
-            ],
             "expected_mv": "0 ±30 mV"
         },
         {
@@ -363,13 +375,6 @@ def render_ph_calibration():
             "icon": "🔴",
             "desc": "Acidic Buffer",
             "range": "3.98 - 4.02",
-            "temp_coefficient": "±0.002 pH/°C",
-            "usage": "Low pH calibration point",
-            "tips": [
-                "Use after pH 7 calibration",
-                "Ensure thorough rinsing between buffers",
-                "Check for rapid response"
-            ],
             "expected_mv": "+165 to +180 mV"
         },
         {
@@ -378,133 +383,117 @@ def render_ph_calibration():
             "icon": "🔵",
             "desc": "Basic Buffer",
             "range": "9.98 - 10.02",
-            "temp_coefficient": "±0.003 pH/°C",
-            "usage": "High pH calibration point",
-            "tips": [
-                "Final calibration point",
-                "Most sensitive to temperature",
-                "Verify slope calculation"
-            ],
             "expected_mv": "-165 to -180 mV"
         }
     ]
 
-    ph_data = {}
-
-    # Temperature Section
-    st.markdown("### 🌡️ Temperature Control")
-    temp_col1, temp_col2 = st.columns([2, 1])
-    with temp_col1:
-        ph_data['temperature'] = st.number_input(
-            "Solution Temperature (°C)",
-            min_value=10.0,
-            max_value=40.0,
-            value=25.0,
-            step=0.1
-        )
-    with temp_col2:
-        st.info("Optimal range: 20-25°C")
-
-    # Buffer Calibration Sections
-    for buffer in buffer_configs:
-        with st.container():
-            # Buffer header with colored background
-            st.markdown(
-                f"""
-                <div style='
-                    padding: 10px; 
-                    border-radius: 8px; 
-                    background: {buffer['color']}20; 
-                    border-left: 4px solid {buffer['color']};
-                    margin-bottom: 10px;
-                '>
-                    <h3 style='margin: 0; color: {buffer['color']};'>
-                        {buffer['icon']} {buffer['name']} Buffer Solution - {buffer['desc']}
-                    </h3>
+    for buffer in buffers:
+        st.markdown(f"### {buffer['icon']} {buffer['name']} Buffer Solution")
+        st.markdown(f"""
+            <div class='buffer-card' style='border-left-color: {buffer["color"]};'>
+                <div class='info-grid'>
+                    <div class='info-item'>
+                        <strong>📊 Expected pH Range</strong><br/>
+                        {buffer['range']}
+                    </div>
+                    <div class='info-item'>
+                        <strong>⚡ Expected mV</strong><br/>
+                        {buffer['expected_mv']}
+                    </div>
                 </div>
-                """,
-                unsafe_allow_html=True
+            </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### 📋 Buffer Information")
+            ph_data[f"{buffer['name']}_control"] = st.text_input(
+                "Control Number",
+                key=f"{buffer['name']}_control",
+                help="Enter the buffer solution control number"
             )
-            
-            # Buffer information
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("**📊 Acceptable Range**")
-                st.write(buffer['range'])
-            with col2:
-                st.markdown("**🌡️ Temperature Coefficient**")
-                st.write(buffer['temp_coefficient'])
-            with col3:
-                st.markdown("**⚡ Expected mV**")
-                st.write(buffer['expected_mv'])
+            ph_data[f"{buffer['name']}_exp"] = st.date_input(
+                "Expiration Date",
+                key=f"{buffer['name']}_exp"
+            )
+            ph_data[f"{buffer['name']}_opened"] = st.date_input(
+                "Date Opened",
+                key=f"{buffer['name']}_opened"
+            )
 
-            # Tips section using native Streamlit components
-            with st.expander("💡 Important Tips", expanded=True):
-                for tip in buffer['tips']:
-                    st.markdown(f"• {tip}")
+        with col2:
+            st.markdown("#### 📊 Measurements")
+            measurement_cols = st.columns(2)
+            with measurement_cols[0]:
+                ph_data[f"{buffer['name']}_initial"] = st.number_input(
+                    "Initial Reading (pH)",
+                    min_value=0.0,
+                    max_value=14.0,
+                    step=0.01,
+                    key=f"{buffer['name']}_initial_ph",
+                    help=f"Target: {buffer['range']}"
+                )
+                ph_data[f"{buffer['name']}_initial_mv"] = st.number_input(
+                    "Initial mV",
+                    min_value=-2000.0,
+                    max_value=2000.0,
+                    step=0.1,
+                    key=f"{buffer['name']}_initial_mv",
+                    help=f"Expected: {buffer['expected_mv']}"
+                )
 
-            # Buffer Information and Measurements
-            col1, col2 = st.columns(2)
-            
-            # Buffer Information
-            with col1:
-                st.markdown("#### 📋 Buffer Information")
-                with st.container():
-                    ph_data[f"{buffer['name']}_control"] = st.text_input(
-                        "Control Number",
-                        key=f"{buffer['name']}_control"
-                    )
-                    ph_data[f"{buffer['name']}_exp"] = st.date_input(
-                        "Expiration Date",
-                        key=f"{buffer['name']}_exp"
-                    )
-                    ph_data[f"{buffer['name']}_opened"] = st.date_input(
-                        "Date Opened",
-                        key=f"{buffer['name']}_opened"
-                    )
+            with measurement_cols[1]:
+                ph_data[f"{buffer['name']}_calibrated"] = st.number_input(
+                    "Final Reading (pH)",
+                    min_value=0.0,
+                    max_value=14.0,
+                    step=0.01,
+                    key=f"{buffer['name']}_final_ph"
+                )
+                ph_data[f"{buffer['name']}_calibrated_mv"] = st.number_input(
+                    "Final mV",
+                    min_value=-2000.0,
+                    max_value=2000.0,
+                    step=0.1,
+                    key=f"{buffer['name']}_final_mv"
+                )
 
-            # Measurements
-            with col2:
-                st.markdown("#### 📊 Measurements")
-                mcol1, mcol2 = st.columns(2)
-                
-                with mcol1:
-                    st.markdown("**Initial Readings**")
-                    ph_data[f"{buffer['name']}_initial"] = st.number_input(
-                        "pH",
-                        min_value=0.0,
-                        max_value=14.0,
-                        step=0.01,
-                        key=f"{buffer['name']}_initial_ph",
-                        help=f"Target: {buffer['range']}"
-                    )
-                    ph_data[f"{buffer['name']}_initial_mv"] = st.number_input(
-                        "mV",
-                        min_value=-2000.0,
-                        max_value=2000.0,
-                        step=0.1,
-                        key=f"{buffer['name']}_initial_mv",
-                        help=f"Expected: {buffer['expected_mv']}"
-                    )
-                
-                with mcol2:
-                    st.markdown("**Final Readings**")
-                    ph_data[f"{buffer['name']}_calibrated"] = st.number_input(
-                        "pH",
-                        min_value=0.0,
-                        max_value=14.0,
-                        step=0.01,
-                        key=f"{buffer['name']}_final_ph"
-                    )
-                    ph_data[f"{buffer['name']}_calibrated_mv"] = st.number_input(
-                        "mV",
-                        min_value=-2000.0,
-                        max_value=2000.0,
-                        step=0.1,
-                        key=f"{buffer['name']}_final_mv"
-                    )
+        # If pH 7 buffer, add offset readings
+        if buffer['name'] == "pH 7":
+            st.markdown("#### Offset Measurement")
+            ph_data['offset_mv'] = st.number_input(
+                "pH 7 Offset (mV)",
+                min_value=-60.0,
+                max_value=60.0,
+                value=0.0,
+                step=0.1,
+                help="Ideal value is 0 mV. Acceptable range: ±60 mV"
+            )
+            if abs(ph_data['offset_mv']) > 30:
+                st.warning("⚠️ Offset is outside optimal range (±30 mV)")
 
-            st.markdown("---")
+    # Slope Readings Section (after pH 4 and 7 buffers)
+    st.markdown("### 📈 Slope Calculation")
+    st.markdown("""
+        <div class='readings-section'>
+            <p><strong>Note:</strong> Slope is calculated using pH 4 and pH 7 buffer readings.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    ph_data['slope_mv'] = st.number_input(
+        "Slope (mV/pH)",
+        min_value=-65.0,
+        max_value=-45.0,
+        value=-59.2,
+        step=0.1,
+        help="Theoretical value is -59.2 mV/pH at 25°C. Acceptable range: -65 to -45 mV/pH"
+    )
+    
+    # Slope validation
+    if ph_data['slope_mv'] > -50 or ph_data['slope_mv'] < -62:
+        st.warning("⚠️ Slope is outside optimal range (-62 to -50 mV/pH)")
+    else:
+        st.success(f"✅ Slope is within optimal range: {ph_data['slope_mv']} mV/pH")
 
     return ph_data
 
@@ -526,173 +515,29 @@ def render_do_tips(tips, border_color):
     """
     st.markdown(tips_html, unsafe_allow_html=True)
 
-def render_zero_point_calibration(do_data):
-    """Render zero point calibration section"""
-    st.markdown("### Zero Point Calibration (0% DO)")
-    
-    # Info grid
-    st.markdown("""
-        <div class='info-grid'>
-            <div class='info-item'>
-                <strong>📊 Expected Range</strong><br/>
-                0.0 - 0.3 mg/L
-            </div>
-            <div class='info-item'>
-                <strong>⏱️ Stability Time</strong><br/>
-                2-3 minutes
-            </div>
-            <div class='info-item'>
-                <strong>🎯 Target Value</strong><br/>
-                0.0% saturation
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Tips section
-    zero_point_tips = [
-        "Use fresh sodium sulfite solution",
-        "Ensure probe tip is fully submerged",
-        "Stir gently to remove any trapped bubbles",
-        "Wait for reading to stabilize completely"
-    ]
-    render_do_tips(zero_point_tips, "#FF6B6B")
-
-    # Input fields
-    col1, col2 = st.columns(2)
-    with col1:
-        do_data['zero_control'] = st.text_input(
-            "Zero Solution Control Number",
-            help="Enter the control number of the zero oxygen solution"
-        )
-        do_data['zero_exp'] = st.date_input(
-            "Solution Expiration Date",
-            help="Enter the expiration date of the zero oxygen solution"
-        )
-    
-    with col2:
-        do_data['zero_initial'] = st.number_input(
-            "Initial Reading (%)",
-            min_value=-0.1,
-            max_value=100.0,
-            step=0.1,
-            help="Initial DO reading before calibration"
-        )
-        do_data['zero_final'] = st.number_input(
-            "Final Reading (%)",
-            min_value=-0.1,
-            max_value=100.0,
-            step=0.1,
-            help="Should be close to 0.0%"
-        )
-
-def render_saturation_point_calibration(do_data):
-    """Render saturation point calibration section"""
-    st.markdown("### Saturation Point Calibration (100% DO)")
-    
-    # Info grid
-    st.markdown("""
-        <div class='info-grid'>
-            <div class='info-item'>
-                <strong>📊 Expected Range</strong><br/>
-                95-105% saturation
-            </div>
-            <div class='info-item'>
-                <strong>⏱️ Stability Time</strong><br/>
-                3-5 minutes
-            </div>
-            <div class='info-item'>
-                <strong>🎯 Target Value</strong><br/>
-                100% saturation
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Tips section
-    saturation_tips = [
-        "Use water-saturated air or air-saturated water",
-        "Keep probe in a sealed container with moist air",
-        "Maintain constant temperature",
-        "Avoid direct sunlight during calibration",
-        "Consider atmospheric pressure effects"
-    ]
-    render_do_tips(saturation_tips, "#4ECDC4")
-
-    # Input fields
-    col1, col2 = st.columns(2)
-    with col1:
-        do_data['sat_initial'] = st.number_input(
-            "Initial Reading (%)",
-            min_value=0.0,
-            max_value=200.0,
-            step=0.1,
-            key="sat_initial",
-            help="Initial saturation reading"
-        )
-        do_data['sat_final'] = st.number_input(
-            "Final Reading (%)",
-            min_value=0.0,
-            max_value=200.0,
-            step=0.1,
-            key="sat_final",
-            help="Should be close to 100%"
-        )
-    
-    with col2:
-        do_data['sat_mg_l'] = st.number_input(
-            "mg/L Reading",
-            min_value=0.0,
-            max_value=20.0,
-            step=0.1,
-            help="Dissolved oxygen concentration"
-        )
-        do_data['sat_temp'] = st.number_input(
-            "Temperature (°C)",
-            min_value=0.0,
-            max_value=50.0,
-            step=0.1,
-            key="sat_temp",
-            help="Temperature during saturation calibration"
-        )
-
 def render_do_calibration():
-    """Main DO calibration function"""
+    """Render DO probe calibration form with mg/L measurements."""
     st.markdown("""
-        <style>
-            .do-header {
-                background: linear-gradient(90deg, #0071ba, #00a6fb);
-                color: white;
-                padding: 20px;
-                border-radius: 10px;
-                margin-bottom: 20px;
-            }
-            .info-grid {
-                display: flex;
-                gap: 15px;
-                margin: 10px 0;
-                flex-wrap: wrap;
-            }
-            .info-item {
-                background: #f8f9fa;
-                padding: 10px 15px;
-                border-radius: 8px;
-                flex: 1;
-                min-width: 200px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Header
-    st.markdown("""
-        <div class='do-header'>
+        <div class='calibration-header'>
             <h2 style='margin:0;'>💧 DO Probe Calibration</h2>
-            <p style='margin:5px 0 0 0;'>Two-point calibration for Dissolved Oxygen measurement</p>
+            <p style='margin:5px 0 0 0;'>Two-point calibration for Dissolved Oxygen measurement (mg/L)</p>
         </div>
     """, unsafe_allow_html=True)
 
     do_data = {}
 
-    # Environment conditions section
+    # General Guidelines
+    with st.expander("📌 General Calibration Guidelines", expanded=True):
+        st.markdown("""
+        * Keep probe membrane clean and free from debris
+        * Allow sufficient warm-up time (15-20 minutes)
+        * Avoid air bubbles on the membrane during calibration
+        * Maintain consistent temperature during calibration
+        * Perform calibration in order: 0 mg/L then saturation
+        * Replace electrolyte solution if readings are unstable
+        """)
+
+    # Temperature and Atmospheric Pressure Section
     st.markdown("### 🌡️ Environmental Conditions")
     col1, col2 = st.columns(2)
     with col1:
@@ -701,7 +546,8 @@ def render_do_calibration():
             min_value=0.0,
             max_value=50.0,
             value=25.0,
-            step=0.1
+            step=0.1,
+            help="Maintain consistent temperature throughout calibration"
         )
     with col2:
         do_data['pressure'] = st.number_input(
@@ -709,16 +555,111 @@ def render_do_calibration():
             min_value=500.0,
             max_value=800.0,
             value=760.0,
-            step=0.1
+            step=0.1,
+            help="Local atmospheric pressure affects DO saturation"
         )
 
-    # Calibration sections
-    render_zero_point_calibration(do_data)
-    st.markdown("---")
-    render_saturation_point_calibration(do_data)
+    # Zero Point (0 mg/L DO) Calibration
+    st.markdown("### Zero Point Calibration (0 mg/L DO)")
+    with st.container():
+        st.markdown("""
+            <div class='calibration-card' style='border-left-color: #FF6B6B;'>
+                <div class='info-grid'>
+                    <div class='info-item'>
+                        <strong>📊 Expected Range</strong><br/>
+                        0.0 - 0.2 mg/L
+                    </div>
+                    <div class='info-item'>
+                        <strong>⏱️ Stability Time</strong><br/>
+                        2-3 minutes
+                    </div>
+                    <div class='info-item'>
+                        <strong>🎯 Target Value</strong><br/>
+                        0.0 mg/L
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            do_data['zero_control'] = st.text_input(
+                "Zero Solution Control Number",
+                help="Enter the control number of the zero oxygen solution"
+            )
+            do_data['zero_exp'] = st.date_input(
+                "Solution Expiration Date",
+                help="Enter the expiration date of the zero oxygen solution"
+            )
+        
+        with col2:
+            do_data['zero_initial'] = st.number_input(
+                "Initial Reading (mg/L)",
+                min_value=0.0,
+                max_value=20.0,
+                step=0.01,
+                help="Initial DO reading before calibration"
+            )
+            do_data['zero_final'] = st.number_input(
+                "Final Reading (mg/L)",
+                min_value=0.0,
+                max_value=20.0,
+                step=0.01,
+                help="Should be close to 0.0 mg/L"
+            )
+
+    # Saturation Point Calibration
+    st.markdown("### Saturation Point Calibration")
+    with st.container():
+        st.markdown("""
+            <div class='calibration-card' style='border-left-color: #4ECDC4;'>
+                <div class='info-grid'>
+                    <div class='info-item'>
+                        <strong>📊 Expected Range</strong><br/>
+                        8.2 - 8.7 mg/L at 25°C
+                    </div>
+                    <div class='info-item'>
+                        <strong>⏱️ Stability Time</strong><br/>
+                        3-5 minutes
+                    </div>
+                    <div class='info-item'>
+                        <strong>🎯 Target Value</strong><br/>
+                        8.4 mg/L at 25°C
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            do_data['sat_initial'] = st.number_input(
+                "Initial Reading (mg/L)",
+                min_value=0.0,
+                max_value=20.0,
+                step=0.01,
+                key="sat_initial",
+                help="Initial saturation reading"
+            )
+            do_data['sat_final'] = st.number_input(
+                "Final Reading (mg/L)",
+                min_value=0.0,
+                max_value=20.0,
+                step=0.01,
+                key="sat_final",
+                help="Should be within expected range for temperature"
+            )
+        
+        with col2:
+            do_data['sat_temp'] = st.number_input(
+                "Temperature (°C)",
+                min_value=0.0,
+                max_value=50.0,
+                step=0.1,
+                key="sat_temp",
+                help="Temperature during saturation calibration"
+            )
 
     return do_data
-
 
 def render_orp_calibration():
     """Render ORP probe calibration form."""
