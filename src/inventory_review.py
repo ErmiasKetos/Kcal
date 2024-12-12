@@ -250,17 +250,17 @@ def render_inventory_table(filtered_df):
             help="Current status of the probe",
             width="small"
         ),
-        "Entry Date": st.column_config.DateColumn(
+        "Entry Date": st.column_config.TextColumn(  # Changed from DateColumn to TextColumn
             "Entry Date",
             help="Date when the probe was added to inventory",
             width="small"
         ),
-        "Last Modified": st.column_config.DateColumn(
+        "Last Modified": st.column_config.TextColumn(  # Changed from DateColumn to TextColumn
             "Last Modified",
             help="Last modification date",
             width="small"
         ),
-        "Next Calibration": st.column_config.DateColumn(
+        "Next Calibration": st.column_config.TextColumn(  # Changed from DateColumn to TextColumn
             "Next Calibration",
             help="Date when next calibration is due",
             width="small"
