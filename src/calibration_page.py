@@ -167,7 +167,7 @@ def render_autocomplete_search():
     return None
 
 
-def render_ph_calibration():
+
 def render_ph_calibration():
     """Render enhanced pH probe calibration form."""
     # Apply custom styles
