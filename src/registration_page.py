@@ -29,6 +29,7 @@ SERVICE_LIFE = {
 
 def registration_page():
     """Main page for probe registration"""
+    
     # Initialize inventory manager if not exists
     if 'inventory_manager' not in st.session_state:
         st.session_state.inventory_manager = InventoryManager()
@@ -106,10 +107,14 @@ def registration_page():
                     frame.contentWindow.document.open();
                     frame.contentWindow.document.write(content);
                     frame.contentWindow.document.close();
-                    setTimeout(() => {{
-                        frame.contentWindow.focus();
-                        frame.contentWindow.print();
-                    }}, 250);
+
+                    // Add an event listener for when the iframe content is loaded
+                    frame.onload = function() {{
+                        setTimeout(() => {{
+                            frame.contentWindow.focus();
+                            frame.contentWindow.print();
+                        }}, 250);
+                    }};
                 }}
             </script>
         """, unsafe_allow_html=True)
