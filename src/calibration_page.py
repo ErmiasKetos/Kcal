@@ -296,71 +296,33 @@ CALIBRATION_STYLES = """
 """
 
 def render_ph_calibration():
-    """Render enhanced pH probe calibration form."""
+def render_ph_calibration():
+    """Render pH probe calibration form."""
     st.markdown("""
-        <style>
-            .calibration-header {
-                background: linear-gradient(90deg, #0071ba, #00a6fb);
-                color: white;
-                padding: 20px;
-                border-radius: 10px;
-                margin-bottom: 20px;
-            }
-            .info-grid {
-                display: flex;
-                gap: 15px;
-                margin: 10px 0;
-                flex-wrap: wrap;
-            }
-            .info-item {
-                background: #f8f9fa;
-                padding: 10px 15px;
-                border-radius: 8px;
-                flex: 1;
-                min-width: 200px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            .buffer-card {
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                margin-bottom: 20px;
-                border-left: 4px solid;
-            }
-            .readings-section {
-                background: #f8f9fa;
-                padding: 15px;
-                border-radius: 8px;
-                margin-top: 15px;
-                border: 1px solid #e9ecef;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Header
-    st.markdown("""
-        <div class='calibration-header'>
+        <div style='background: linear-gradient(90deg, #0071ba, #00a6fb); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
             <h2 style='margin:0;'>🧪 pH Probe Calibration</h2>
-            <p style='margin:5px 0 0 0;'>Three-point calibration sequence</p>
+            <p style='margin:5px 0 0 0;'>Three-point calibration sequence for accurate pH measurement</p>
         </div>
     """, unsafe_allow_html=True)
 
     ph_data = {}
 
     # Temperature measurement
-    st.markdown("### 🌡️ Temperature Settings")
-    ph_data['temperature'] = st.number_input(
-        "Solution Temperature (°C)",
-        min_value=10.0,
-        max_value=40.0,
-        value=25.0,
-        step=0.1,
-        help="Maintain temperature between 10-40°C for accurate calibration"
-    )
+    st.markdown("### 🌡️ Temperature Control")
+    temp_col1, temp_col2 = st.columns([2, 1])
+    with temp_col1:
+        ph_data['temperature'] = st.number_input(
+            "Solution Temperature (°C)",
+            min_value=10.0,
+            max_value=40.0,
+            value=25.0,
+            step=0.1,
+            help="Maintain temperature between 10-40°C"
+        )
+    with temp_col2:
+        st.info("Optimal range: 20-25°C")
 
-    # Buffer Solutions
-
+    # Buffer configurations
     buffers = [
         {
             "name": "pH 7",
@@ -408,27 +370,17 @@ def render_ph_calibration():
 
     for buffer in buffers:
         st.markdown(f"### {buffer['icon']} {buffer['name']} Buffer Solution")
-        st.markdown(f"""
-            <div class='buffer-card' style='border-left-color: {buffer["color"]};'>
-                <div class='info-grid'>
-                    <div class='info-item'>
-                        <strong>📊 Expected pH Range</strong><br/>
-                        {buffer['range']}
-                    </div>
-                    <div class='info-item'>
-                        <strong>⚡ Expected mV</strong><br/>
-                        {buffer['expected_mv']}
-                    </div>
-                </div>
+        
+        # Info grid
+        st.info(f"""
+            📊 Expected Range: {buffer['range']}  |  
+            ⚡ Expected mV: {buffer['expected_mv']}
+        """)
 
-                <div class='tips-container'>
-                    <strong>💡 Important Tips:</strong>
-                    <ul>
-                        {''.join(f'<li>{tip}</li>' for tip in buffer['tips'])}
-                    </ul>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # Tips
+        with st.expander("💡 Important Tips", expanded=True):
+            for tip in buffer['tips']:
+                st.markdown(f"• {tip}")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -449,6 +401,8 @@ def render_ph_calibration():
 
         with col2:
             st.markdown("#### 📊 Measurements")
+            
+            # Regular pH measurements
             measurement_cols = st.columns(2)
             with measurement_cols[0]:
                 ph_data[f"{buffer['name']}_initial"] = st.number_input(
@@ -484,34 +438,35 @@ def render_ph_calibration():
                     key=f"{buffer['name']}_final_mv"
                 )
 
-        # If pH 7 buffer, add offset readings
-        if buffer['name'] == "pH 7":
-            st.markdown("#### Offset Measurement")
-            ph_data['offset_mv'] = st.number_input(
-                "pH 7 Offset (mV)",
-                min_value=-60.0,
-                max_value=60.0,
-                value=0.0,
-                step=0.1,
-                help="Ideal value is 0 mV. Acceptable range: ±60 mV"
-            )
-            if abs(ph_data['offset_mv']) > 30:
-                st.warning("⚠️ Offset is outside optimal range (±30 mV)")
+            # Add slope and offset fields in the measurements column for pH 7
+            if buffer['name'] == "pH 7":
+                st.markdown("##### Offset Reading")
+                ph_data['offset_mv'] = st.number_input(
+                    "pH 7 Offset (mV)",
+                    min_value=-60.0,
+                    max_value=60.0,
+                    value=0.0,
+                    step=0.1,
+                    help="Ideal value is 0 mV. Acceptable range: ±60 mV"
+                )
+                if abs(ph_data['offset_mv']) > 30:
+                    st.warning("⚠️ Offset is outside optimal range (±30 mV)")
 
-    # Add slope input field
-    st.markdown("#### 📈 Slope Reading")
-    ph_data['slope_mv'] = st.number_input(
-        "Slope (mV/pH)",
-        min_value=-65.0,
-        max_value=-45.0,
-        value=-59.2,
-        step=0.1,
-        help="Theoretical value is -59.2 mV/pH at 25°C. Acceptable range: -65 to -45 mV/pH"
-    )
-    
-    # Slope validation
-    if ph_data['slope_mv'] > -50 or ph_data['slope_mv'] < -62:
-        st.warning("⚠️ Slope is outside optimal range (-62 to -50 mV/pH)")
+            # Add slope field after pH 4 measurements
+            if buffer['name'] == "pH 4":
+                st.markdown("##### Slope Reading")
+                ph_data['slope_mv'] = st.number_input(
+                    "Slope (mV/pH)",
+                    min_value=-65.0,
+                    max_value=-45.0,
+                    value=-59.2,
+                    step=0.1,
+                    help="Theoretical value is -59.2 mV/pH at 25°C"
+                )
+                if ph_data['slope_mv'] > -50 or ph_data['slope_mv'] < -62:
+                    st.warning("⚠️ Slope is outside optimal range (-62 to -50 mV/pH)")
+
+        st.markdown("---")
 
     return ph_data
 def render_do_tips(tips, border_color):
