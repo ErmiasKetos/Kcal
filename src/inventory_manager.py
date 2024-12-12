@@ -1,478 +1,176 @@
-# src/inventory_review.py
+
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import logging
+import gspread
+from google.oauth2 import service_account
 import json
-import time
-from .inventory_manager import STATUS_COLORS
 
-# Constants for the inventory review
-ESSENTIAL_COLUMNS = [
-    "Serial Number", "Type", "Status", "Entry Date", 
-    "Next Calibration", "Last Modified", "Registered By", "Calibrated By"
-]
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-STATUS_INFO = {
-    'Instock': {
-        'color': '#FFD700',
-        'desc': 'Probes available for calibration and deployment',
-        'icon': '📦'
-    },
-    'Calibrated': {
-        'color': '#32CD32',
-        'desc': 'Probes that have been calibrated and are ready for shipping',
-        'icon': '✅'
-    },
-    'Shipped': {
-        'color': '#4169E1',
-        'desc': 'Probes that have been sent to customers',
-        'icon': '🚢'
-    },
-    'Scraped': {
-        'color': '#DC143C',
-        'desc': 'Probes that are no longer in service',
-        'icon': '❌'
-    }
+# Constants
+SHEET_ID = "1J9VE94Ja863EyPNZGOEes1EuILg0FsGC58bLwKiQlbc"
+WORKSHEET_NAME = "Sheet1"
+
+# Status color mapping
+STATUS_COLORS = {
+    'Instock': '#FFD700',      # Gold Yellow
+    'Calibrated': '#32CD32',   # Lime Green
+    'Shipped': '#4169E1',      # Royal Blue
+    'Scraped': '#DC143C'       # Crimson
 }
 
-def render_status_legend():
-    """Render status color legend with descriptions."""
-    st.markdown("""
-        <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-bottom: 20px;'>
-    """, unsafe_allow_html=True)
-    
-    for status, info in STATUS_INFO.items():
-        st.markdown(f"""
-            <div style='
-                padding: 15px;
-                border-radius: 8px;
-                background-color: {info['color']}20;
-                border-left: 4px solid {info['color']};
-            '>
-                <div style='font-weight: bold; margin-bottom: 5px;'>
-                    {info['icon']} {status}
-                </div>
-                <div style='font-size: 0.9em; color: #666;'>
-                    {info['desc']}
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
+class InventoryManager:
+    def __init__(self):
+        """Initialize InventoryManager with Google Sheets connection."""
+        self.sheet_id = SHEET_ID
+        self.worksheet_name = WORKSHEET_NAME
+        self.client = None
+        self.worksheet = None
+        self._initialize_sheets()
 
-def render_inventory_table(filtered_df):
-    """Render the inventory data table with enhanced features."""
-    # Store the selected probe in session state if not exists
-    if 'selected_probe_action' not in st.session_state:
-        st.session_state.selected_probe_action = None
+    def _initialize_sheets(self):
+        """Initialize Google Sheets connection."""
+        try:
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive.file",
+                ]
+            )
+            self.client = gspread.authorize(credentials)
+            self.worksheet = self.client.open_by_key(self.sheet_id).worksheet(self.worksheet_name)
+            logger.info("Successfully initialized Google Sheets connection")
+        except Exception as e:
+            logger.error(f"Failed to initialize sheets connection: {str(e)}")
+            raise
 
-    # Column configuration
-    column_config = {
-        "Serial Number": st.column_config.LinkColumn(
-            "Serial Number",
-            help="Click to manage probe",
-            width="medium",
-            display_text=lambda x: x  # Display serial number as is
-        ),
-        "Type": st.column_config.TextColumn(
-            "Type",
-            help="Type of probe",
-            width="medium"
-        ),
-        "Status": st.column_config.TextColumn(
-            "Status",
-            help="Current status of the probe",
-            width="small"
-        ),
-        "Entry Date": st.column_config.DateColumn(
-            "Entry Date",
-            help="Date when the probe was added to inventory",
-            width="small"
-        ),
-        "Last Modified": st.column_config.DateColumn(
-            "Last Modified",
-            help="Last modification date",
-            width="small"
-        ),
-        "Next Calibration": st.column_config.DateColumn(
-            "Next Calibration",
-            help="Date when next calibration is due",
-            width="small"
-        ),
-        "Registered By": st.column_config.TextColumn(
-            "Registered By",
-            help="User who registered the probe",
-            width="medium"
-        ),
-        "Calibrated By": st.column_config.TextColumn(
-            "Calibrated By",
-            help="User who last calibrated the probe",
-            width="medium"
-        )
-    }
-
-    # Apply colored status formatting
-    display_df = filtered_df.copy()
-    display_df['Status'] = display_df['Status'].apply(
-        lambda x: f"""
-            <div style='
-                background-color: {STATUS_COLORS.get(x, "#CCCCCC")}40;
-                color: {STATUS_COLORS.get(x, "#000000")};
-                padding: 4px 8px;
-                border-radius: 12px;
-                text-align: center;
-                font-weight: 500;
-            '>
-                {x}
-            </div>
-        """
-    )
-
-    # Render the table
-    edited_df = st.data_editor(
-        display_df,
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="inventory_editor",
-        disabled=["Status"]  # Prevent direct editing of status
-    )
-
-    # Handle serial number clicks
-    clicked_serial = None
-    for serial in filtered_df['Serial Number']:
-        if st.session_state.get(f"inventory_editor.Serial Number.{serial}.clicked", False):
-            clicked_serial = serial
-            break
-
-    # Show action dialog if a serial number is clicked
-    if clicked_serial:
-        st.session_state.selected_probe_action = clicked_serial
-        
-    if st.session_state.selected_probe_action:
-        with st.container():
-            st.markdown("---")
-            st.markdown(f"### Actions for Probe: {st.session_state.selected_probe_action}")
-            
-            col1, col2, col3 = st.columns([2, 2, 1])
-            
-            with col1:
-                action = st.radio(
-                    "Choose action:",
-                    ["Calibrate", "Change Status"],
-                    key=f"action_{st.session_state.selected_probe_action}"
-                )
-            
-            with col2:
-                if action == "Calibrate":
-                    if st.button("Go to Calibration", type="primary"):
-                        st.session_state.selected_probe = st.session_state.selected_probe_action
-                        st.session_state.page = "Probe Calibration"
-                        st.session_state.selected_probe_action = None
-                        st.rerun()
+    def initialize_inventory(self):
+        """Initialize or load existing inventory"""
+        try:
+            if 'inventory' not in st.session_state or st.session_state.inventory.empty:
+                data = self.worksheet.get_all_records()
+                df = pd.DataFrame(data)
                 
-                elif action == "Change Status":
-                    new_status = st.selectbox(
-                        "New Status:",
-                        ["Instock", "Calibrated", "Shipped", "Scraped"]
-                    )
-                    if st.button("Update Status", type="primary"):
-                        if st.session_state.inventory_manager.update_probe_status(
-                            st.session_state.selected_probe_action, 
-                            new_status
-                        ):
-                            st.success(f"Status updated to {new_status}")
-                            st.session_state.selected_probe_action = None
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Failed to update status")
-            
-            with col3:
-                if st.button("Cancel"):
-                    st.session_state.selected_probe_action = None
-                    st.rerun()
-
-    return edited_df
-
-def render_advanced_filters(df):
-    """Render advanced filtering options."""
-    with st.expander("🔍 Advanced Filters", expanded=True):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            status_filter = st.multiselect(
-                "Status",
-                options=list(STATUS_INFO.keys()),
-                default=["Instock", "Calibrated"]
-            )
-            
-            type_filter = st.multiselect(
-                "Probe Type",
-                options=sorted(df['Type'].unique())
-            )
-
-        with col2:
-            date_range = st.date_input(
-                "Date Range",
-                value=(
-                    datetime.now() - timedelta(days=30),
-                    datetime.now()
-                ),
-                help="Filter by Entry Date"
-            )
-
-        # Quick filters
-        st.markdown("#### Quick Filters")
-        quick_filter_cols = st.columns(4)
-        
-        with quick_filter_cols[0]:
-            show_expired = st.checkbox(
-                "Show Expired Calibrations",
-                help="Show probes with expired calibration dates"
-            )
-        
-        with quick_filter_cols[1]:
-            show_recent = st.checkbox(
-                "Recent Changes (7 days)",
-                help="Show probes modified in the last 7 days"
-            )
-        
-        with quick_filter_cols[2]:
-            show_critical = st.checkbox(
-                "Needs Attention",
-                help="Show probes needing immediate attention"
-            )
-        
-        with quick_filter_cols[3]:
-            show_registered_by = st.checkbox(
-                "My Registrations",
-                help="Show probes registered by current user"
-            )
-
-    # Apply filters
-    filtered_df = df.copy()
-
-    if status_filter:
-        filtered_df = filtered_df[filtered_df['Status'].isin(status_filter)]
-    
-    if type_filter:
-        filtered_df = filtered_df[filtered_df['Type'].isin(type_filter)]
-    
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-        filtered_df = filtered_df[
-            (pd.to_datetime(filtered_df['Entry Date']).dt.date >= start_date) &
-            (pd.to_datetime(filtered_df['Entry Date']).dt.date <= end_date)
-        ]
-    
-    if show_expired:
-        filtered_df = filtered_df[
-            pd.to_datetime(filtered_df['Next Calibration']) <= datetime.now()
-        ]
-    
-    if show_recent:
-        filtered_df = filtered_df[
-            pd.to_datetime(filtered_df['Last Modified']) >= datetime.now() - timedelta(days=7)
-        ]
-    
-    if show_critical:
-        critical_mask = (
-            (filtered_df['Status'] == 'Instock') |
-            (pd.to_datetime(filtered_df['Next Calibration']) <= datetime.now() + timedelta(days=7))
-        )
-        filtered_df = filtered_df[critical_mask]
-    
-    if show_registered_by:
-        filtered_df = filtered_df[
-            filtered_df['Registered By'] == st.session_state.get('username', '')
-        ]
-
-    return filtered_df
-
-def render_inventory_table(filtered_df):
-    """Render the inventory data table with enhanced features."""
-    # Column configuration
-    column_config = {
-        "Serial Number": st.column_config.TextColumn(
-            "Serial Number",
-            help="Click to manage probe",
-            width="medium"
-        ),
-        "Type": st.column_config.SelectboxColumn(
-            "Type",
-            help="Type of probe",
-            width="medium",
-            options=sorted(filtered_df['Type'].unique())
-        ),
-        "Status": st.column_config.TextColumn(
-            "Status",
-            help="Current status of the probe",
-            width="small"
-        ),
-        "Entry Date": st.column_config.DateColumn(
-            "Entry Date",
-            help="Date when the probe was added to inventory",
-            width="small"
-        ),
-        "Last Modified": st.column_config.DateColumn(
-            "Last Modified",
-            help="Last modification date",
-            width="small"
-        ),
-        "Next Calibration": st.column_config.DateColumn(
-            "Next Calibration",
-            help="Date when next calibration is due",
-            width="small"
-        ),
-        "Registered By": st.column_config.TextColumn(
-            "Registered By",
-            help="User who registered the probe",
-            width="medium"
-        ),
-        "Calibrated By": st.column_config.TextColumn(
-            "Calibrated By",
-            help="User who last calibrated the probe",
-            width="medium"
-        )
-    }
-
-    # Add probe action handlers
-    for idx, row in filtered_df.iterrows():
-        if st.button(row['Serial Number'], key=f"probe_{row['Serial Number']}"):
-            with st.expander(f"Actions for {row['Serial Number']}", expanded=True):
-                action = st.radio(
-                    "Choose action:",
-                    ["Calibrate", "Change Status"],
-                    key=f"action_{row['Serial Number']}"
-                )
+                # Convert date columns
+                date_columns = ['Entry Date', 'Last Modified', 'Next Calibration', 'Change Date']
+                for col in date_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d')
                 
-                if action == "Calibrate":
-                    if st.button("Go to Calibration", key=f"cal_{row['Serial Number']}"):
-                        st.session_state.selected_probe = row['Serial Number']
-                        st.session_state.page = "Probe Calibration"
-                        st.rerun()
+                st.session_state.inventory = df
+                logger.info(f"Loaded inventory from Google Sheets: {len(df)} records")
+        except Exception as e:
+            logger.error(f"Error initializing inventory: {str(e)}")
+            # Create empty inventory with required columns
+            st.session_state.inventory = pd.DataFrame(columns=[
+                "Serial Number", "Type", "Manufacturer", "KETOS P/N",
+                "Mfg P/N", "Next Calibration", "Status", "Entry Date",
+                "Last Modified", "Change Date", "Calibration Data"
+            ])
+
+    def save_inventory(self, inventory_df):
+        """Save inventory to Google Sheets."""
+        try:
+            # Update main worksheet
+            headers = inventory_df.columns.tolist()
+            data = inventory_df.values.tolist()
+            
+            self.worksheet.clear()
+            self.worksheet.update('A1', [headers])
+            if data:
+                self.worksheet.update('A2', data)
+
+            # Format header row
+            self.worksheet.format('A1:Z1', {
+                "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
+                "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
+            })
+
+            st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logger.info("Successfully saved inventory to Google Sheets")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving inventory: {str(e)}")
+            return False
+
+    def get_filtered_inventory(self, status_filter="All"):
+        """Get filtered inventory based on status."""
+        try:
+            if status_filter == "All":
+                return st.session_state.inventory
+            return st.session_state.inventory[st.session_state.inventory['Status'] == status_filter]
+        except Exception as e:
+            logger.error(f"Error filtering inventory: {str(e)}")
+            return pd.DataFrame()
+
+    def update_probe_status(self, serial_number, new_status):
+        """Update probe status and metadata."""
+        try:
+            if serial_number in st.session_state.inventory['Serial Number'].values:
+                mask = st.session_state.inventory['Serial Number'] == serial_number
+                st.session_state.inventory.loc[mask, 'Status'] = new_status
+                st.session_state.inventory.loc[mask, 'Change Date'] = datetime.now().strftime('%Y-%m-%d')
+                st.session_state.inventory.loc[mask, 'Last Modified'] = datetime.now().strftime('%Y-%m-%d')
                 
-                elif action == "Change Status":
-                    new_status = st.selectbox(
-                        "New Status:",
-                        ["Instock", "Calibrated", "Shipped", "Scraped"],
-                        key=f"status_{row['Serial Number']}"
-                    )
-                    
-                    if st.button("Update Status", key=f"update_{row['Serial Number']}"):
-                        if st.session_state.inventory_manager.update_probe_status(row['Serial Number'], new_status):
-                            st.success(f"Status updated to {new_status}")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Failed to update status")
+                return self.save_inventory(st.session_state.inventory)
+            return False
+        except Exception as e:
+            logger.error(f"Error updating probe status: {str(e)}")
+            return False
 
-    # Apply status colors
-    filtered_df['Status'] = filtered_df['Status'].apply(
-        lambda x: f"""
-            <div style='
-                background-color: {STATUS_COLORS.get(x, "#CCCCCC")}40;
-                color: {STATUS_COLORS.get(x, "#000000")};
-                padding: 4px 8px;
-                border-radius: 12px;
-                text-align: center;
-                font-weight: 500;
-            '>
-                {x}
-            </div>
-        """
-    )
+    def get_next_serial_number(self, probe_type, manufacturing_date):
+        """Generate sequential serial number."""
+        try:
+            existing_serials = st.session_state.inventory[
+                st.session_state.inventory['Type'] == probe_type
+            ]['Serial Number'].tolist()
+            
+            if existing_serials:
+                sequence_numbers = [
+                    int(serial.split('_')[-1])
+                    for serial in existing_serials
+                ]
+                next_sequence = max(sequence_numbers) + 1
+            else:
+                next_sequence = 1
+            
+            expire_date = manufacturing_date + timedelta(days=365 * 2)  # 2-year default
+            expire_yymm = expire_date.strftime("%y%m")
+            return f"{probe_type.split()[0]}_{expire_yymm}_{next_sequence:05d}"
+        except Exception as e:
+            logger.error(f"Error generating serial number: {str(e)}")
+            return None
 
-    # Render table
-    st.markdown("""
-        <style>
-            .stDataFrame td {
-                vertical-align: middle !important;
-            }
-            .stDataFrame td:nth-child(3) div {
-                margin: auto;
-                width: fit-content;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    return st.data_editor(
-        filtered_df,
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="inventory_editor"
-    )
-
-def render_tools_section(filtered_df, df):
-    """Render tools and system status section."""
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### Export Options")
-        if st.button("Export Filtered Data"):
-            csv = filtered_df.to_csv(index=False)
-            st.download_button(
-                "📥 Download CSV",
-                csv,
-                f"inventory_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "text/csv"
+    def add_new_probe(self, probe_data):
+        """Add a new probe to the inventory."""
+        try:
+            probe_data['Entry Date'] = datetime.now().strftime('%Y-%m-%d')
+            probe_data['Last Modified'] = datetime.now().strftime('%Y-%m-%d')
+            probe_data['Change Date'] = datetime.now().strftime('%Y-%m-%d')
+            probe_data['Status'] = 'Instock'
+            
+            new_row_df = pd.DataFrame([probe_data])
+            st.session_state.inventory = pd.concat(
+                [st.session_state.inventory, new_row_df],
+                ignore_index=True
             )
-    
-    with col2:
-        st.markdown("#### System Status")
-        if st.session_state.inventory_manager.verify_connection():
-            st.success("✅ Connected to Database")
-            st.info(f"Last Update: {st.session_state.get('last_save_time', 'Never')}")
-        else:
-            st.error("❌ Database Connection Error")
+            
+            return self.save_inventory(st.session_state.inventory)
+        except Exception as e:
+            logger.error(f"Error adding new probe: {str(e)}")
+            return False
 
-    with st.expander("🛠️ Debug Information", expanded=False):
-        st.json({
-            "Total Records": len(df),
-            "Filtered Records": len(filtered_df),
-            "Last Save": st.session_state.get('last_save_time', 'Never'),
-            "Current User": st.session_state.get('username', 'Not logged in'),
-            "Connection Status": "Connected" if st.session_state.inventory_manager.verify_connection() else "Disconnected"
-        })
-
-def inventory_review_page():
-    """Main inventory review page."""
-    st.markdown("# 📦 Inventory Review")
-    
-    if 'inventory_manager' not in st.session_state:
-        st.error("Inventory manager not initialized")
-        return
-    
-    df = st.session_state.inventory
-    if df.empty:
-        st.warning("No inventory data available")
-        return
-
-    tab1, tab2, tab3 = st.tabs(["📊 Overview", "📋 Inventory List", "⚙️ Tools"])
-
-    with tab1:
-        render_inventory_stats(df)
-        render_status_legend()
-
-    with tab2:
-        filtered_df = render_advanced_filters(df)
-        edited_df = render_inventory_table(filtered_df)
-        if not edited_df.equals(filtered_df):
-            if st.button("Save Changes", type="primary"):
-                if st.session_state.inventory_manager.save_inventory(edited_df):
-                    st.success("✅ Changes saved successfully!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("Failed to save changes")
-
-    with tab3:
-        render_tools_section(filtered_df, df)
-
-if __name__ == "__main__":
-    inventory_review_page()
+    def verify_connection(self):
+        """Verify connection to Google Sheets."""
+        try:
+            self.worksheet.get_all_values()
+            return True
+        except Exception as e:
+            logger.error(f"Connection verification failed: {str(e)}")
+            return False
