@@ -168,7 +168,6 @@ def render_autocomplete_search():
 
 
 def render_ph_calibration():
-def render_ph_calibration():
     """Render modern pH probe calibration form with enhanced buffer information."""
     st.markdown("""
         <style>
