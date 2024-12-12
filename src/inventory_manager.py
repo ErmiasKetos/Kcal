@@ -61,47 +61,141 @@ def render_status_legend():
     
     st.markdown("</div>", unsafe_allow_html=True)
 
-def render_inventory_stats(df):
-    """Render inventory statistics."""
-    st.markdown("### 📊 Inventory Overview")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    total = len(df)
-    active = len(df[df['Status'].isin(['Instock', 'Calibrated'])])
-    need_cal = len(df[df['Status'] == 'Instock'])
-    shipped = len(df[df['Status'] == 'Shipped'])
-    
-    with col1:
-        st.metric(
-            "Total Probes",
-            f"{total:,}",
-            help="Total number of probes in inventory"
+def render_inventory_table(filtered_df):
+    """Render the inventory data table with enhanced features."""
+    # Store the selected probe in session state if not exists
+    if 'selected_probe_action' not in st.session_state:
+        st.session_state.selected_probe_action = None
+
+    # Column configuration
+    column_config = {
+        "Serial Number": st.column_config.LinkColumn(
+            "Serial Number",
+            help="Click to manage probe",
+            width="medium",
+            display_text=lambda x: x  # Display serial number as is
+        ),
+        "Type": st.column_config.TextColumn(
+            "Type",
+            help="Type of probe",
+            width="medium"
+        ),
+        "Status": st.column_config.TextColumn(
+            "Status",
+            help="Current status of the probe",
+            width="small"
+        ),
+        "Entry Date": st.column_config.DateColumn(
+            "Entry Date",
+            help="Date when the probe was added to inventory",
+            width="small"
+        ),
+        "Last Modified": st.column_config.DateColumn(
+            "Last Modified",
+            help="Last modification date",
+            width="small"
+        ),
+        "Next Calibration": st.column_config.DateColumn(
+            "Next Calibration",
+            help="Date when next calibration is due",
+            width="small"
+        ),
+        "Registered By": st.column_config.TextColumn(
+            "Registered By",
+            help="User who registered the probe",
+            width="medium"
+        ),
+        "Calibrated By": st.column_config.TextColumn(
+            "Calibrated By",
+            help="User who last calibrated the probe",
+            width="medium"
         )
-    
-    with col2:
-        st.metric(
-            "Active Probes",
-            f"{active:,}",
-            f"{(active/total*100):.1f}% of total" if total > 0 else None,
-            help="Probes available for use (Instock + Calibrated)"
-        )
-    
-    with col3:
-        st.metric(
-            "Need Calibration",
-            f"{need_cal:,}",
-            f"{(need_cal/total*100):.1f}% of total" if total > 0 else None,
-            help="Probes requiring calibration"
-        )
-    
-    with col4:
-        st.metric(
-            "Shipped Probes",
-            f"{shipped:,}",
-            f"{(shipped/total*100):.1f}% of total" if total > 0 else None,
-            help="Probes currently deployed"
-        )
+    }
+
+    # Apply colored status formatting
+    display_df = filtered_df.copy()
+    display_df['Status'] = display_df['Status'].apply(
+        lambda x: f"""
+            <div style='
+                background-color: {STATUS_COLORS.get(x, "#CCCCCC")}40;
+                color: {STATUS_COLORS.get(x, "#000000")};
+                padding: 4px 8px;
+                border-radius: 12px;
+                text-align: center;
+                font-weight: 500;
+            '>
+                {x}
+            </div>
+        """
+    )
+
+    # Render the table
+    edited_df = st.data_editor(
+        display_df,
+        column_config=column_config,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="inventory_editor",
+        disabled=["Status"]  # Prevent direct editing of status
+    )
+
+    # Handle serial number clicks
+    clicked_serial = None
+    for serial in filtered_df['Serial Number']:
+        if st.session_state.get(f"inventory_editor.Serial Number.{serial}.clicked", False):
+            clicked_serial = serial
+            break
+
+    # Show action dialog if a serial number is clicked
+    if clicked_serial:
+        st.session_state.selected_probe_action = clicked_serial
+        
+    if st.session_state.selected_probe_action:
+        with st.container():
+            st.markdown("---")
+            st.markdown(f"### Actions for Probe: {st.session_state.selected_probe_action}")
+            
+            col1, col2, col3 = st.columns([2, 2, 1])
+            
+            with col1:
+                action = st.radio(
+                    "Choose action:",
+                    ["Calibrate", "Change Status"],
+                    key=f"action_{st.session_state.selected_probe_action}"
+                )
+            
+            with col2:
+                if action == "Calibrate":
+                    if st.button("Go to Calibration", type="primary"):
+                        st.session_state.selected_probe = st.session_state.selected_probe_action
+                        st.session_state.page = "Probe Calibration"
+                        st.session_state.selected_probe_action = None
+                        st.rerun()
+                
+                elif action == "Change Status":
+                    new_status = st.selectbox(
+                        "New Status:",
+                        ["Instock", "Calibrated", "Shipped", "Scraped"]
+                    )
+                    if st.button("Update Status", type="primary"):
+                        if st.session_state.inventory_manager.update_probe_status(
+                            st.session_state.selected_probe_action, 
+                            new_status
+                        ):
+                            st.success(f"Status updated to {new_status}")
+                            st.session_state.selected_probe_action = None
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to update status")
+            
+            with col3:
+                if st.button("Cancel"):
+                    st.session_state.selected_probe_action = None
+                    st.rerun()
+
+    return edited_df
 
 def render_advanced_filters(df):
     """Render advanced filtering options."""
