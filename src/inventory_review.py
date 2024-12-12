@@ -151,14 +151,25 @@ def render_advanced_filters(df):
 
     return filtered_df
 
+
 def render_inventory_table(filtered_df):
     """Render the inventory data table."""
+    # Add an action column to the table
+    display_df = filtered_df.copy()
+    display_df.insert(1, 'Action', ['Select' for _ in range(len(display_df))])
+    
     # Column configuration
     column_config = {
         "Serial Number": st.column_config.TextColumn(
             "Serial Number",
-            help="Click serial number to manage probe",
+            help="Probe serial number",
             width="medium"
+        ),
+        "Action": st.column_config.SelectboxColumn(
+            "Action",
+            width="medium",
+            options=["Select", "Calibrate", "Change Status"],
+            help="Choose action for probe"
         ),
         "Type": st.column_config.TextColumn(
             "Type",
@@ -197,8 +208,7 @@ def render_inventory_table(filtered_df):
         )
     }
 
-    # Add styling for status colors
-    display_df = filtered_df.copy()
+    # Apply status colors
     display_df['Status'] = display_df['Status'].apply(
         lambda x: f"""
             <div style='
@@ -214,62 +224,46 @@ def render_inventory_table(filtered_df):
         """
     )
 
-    # Initialize state for selected probe if not exists
-    if 'selected_probe_sn' not in st.session_state:
-        st.session_state.selected_probe_sn = None
-        
-    # Add interactivity without changing table appearance
-    selected_rows = st.data_editor(
+    # Render table
+    edited_df = st.data_editor(
         display_df,
         column_config=column_config,
         hide_index=True,
-        key="probe_table",
         use_container_width=True,
-        disabled=["Type", "Status", "Entry Date", "Last Modified", "Next Calibration", 
-                 "Registered By", "Calibrated By"]
+        disabled=["Serial Number", "Type", "Status", "Entry Date", "Last Modified", 
+                 "Next Calibration", "Registered By", "Calibrated By"]
     )
 
-    # Handle row selection and actions
-    if selected_rows is not None and not selected_rows.equals(display_df):
-        # Find the changed row
-        changed_mask = (selected_rows != display_df).any(axis=1)
-        if changed_mask.any():
-            selected_sn = selected_rows[changed_mask].iloc[0]['Serial Number']
-            st.session_state.selected_probe_sn = selected_sn
-            
-            # Show action dialog
-            with st.expander(f"Actions for Probe: {selected_sn}", expanded=True):
-                action = st.radio(
-                    "Choose action:",
-                    ["Calibrate", "Change Status"],
-                    horizontal=True,
-                    key=f"action_{selected_sn}"
+    # Handle actions
+    for idx, row in edited_df.iterrows():
+        if row['Action'] == 'Calibrate':
+            st.session_state.selected_probe = row['Serial Number']
+            st.session_state.page = "Probe Calibration"
+            st.rerun()
+        elif row['Action'] == 'Change Status':
+            with st.expander(f"Change Status for {row['Serial Number']}", expanded=True):
+                new_status = st.selectbox(
+                    "Select new status:",
+                    ["Instock", "Calibrated", "Shipped", "Scraped"],
+                    key=f"status_{row['Serial Number']}"
                 )
-                
-                if action == "Calibrate":
-                    if st.button("Go to Calibration Page", key=f"cal_{selected_sn}", type="primary"):
-                        st.session_state.selected_probe = selected_sn
-                        st.session_state.page = "Probe Calibration"
+                if st.button("Update Status", type="primary", key=f"update_{row['Serial Number']}"):
+                    if st.session_state.inventory_manager.update_probe_status(
+                        row['Serial Number'], new_status
+                    ):
+                        st.success(f"Updated status to {new_status}")
+                        # Reset action to Select
+                        edited_df.at[idx, 'Action'] = 'Select'
+                        time.sleep(1)
                         st.rerun()
-                
-                elif action == "Change Status":
-                    new_status = st.selectbox(
-                        "Select new status:",
-                        ["Instock", "Calibrated", "Shipped", "Scraped"],
-                        key=f"status_{selected_sn}"
-                    )
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        if st.button("Confirm", type="primary", key=f"confirm_{selected_sn}"):
-                            if st.session_state.inventory_manager.update_probe_status(selected_sn, new_status):
-                                st.success(f"Updated status to {new_status}")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("Failed to update status")
+                    else:
+                        st.error("Failed to update status")
 
-    return selected_rows
+    # Remove the Action column before returning
+    if 'Action' in edited_df.columns:
+        edited_df = edited_df.drop('Action', axis=1)
 
+    return edited_df
 def inventory_review_page():
     """Main inventory review page."""
     st.markdown("# 📦 Inventory Review")
