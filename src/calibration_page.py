@@ -659,78 +659,138 @@ def validate_calibration_data(probe_type, calibration_data):
     return errors
 
 def calibration_page():
-    """Main calibration page logic."""
+    """Main page for probe calibration."""
     st.markdown('<h1 style="color: #0071ba;">🔍 Probe Calibration</h1>', unsafe_allow_html=True)
 
     # Initialize inventory manager if needed
     if 'inventory_manager' not in st.session_state:
-        st.error("Inventory manager not initialized. Please refresh the page.")
+        st.error("Inventory manager not initialized")
         return
 
-    # Enhanced probe search
-    selected_serial = render_autocomplete_search()
-    
-    if selected_serial:
-        # Get probe details
-        probe_df = st.session_state.inventory[
-            st.session_state.inventory['Serial Number'] == selected_serial
+    # Clean search section
+    st.markdown("### Select Probe")
+    search_query = st.text_input(
+        "🔍 Search by Serial Number or Type",
+        placeholder="Enter Serial Number or Probe Type...",
+        help="Search for a probe to calibrate"
+    ).strip().lower()
+
+    # Get and filter probes
+    probes = get_searchable_probes()
+    if search_query and probes:
+        filtered_probes = [
+            probe for probe in probes
+            if search_query in probe['search_text'].lower()
         ]
         
-        if probe_df.empty:
+        if filtered_probes:
+            # Display matching probes in a clean table format
+            st.markdown("#### Matching Probes")
+            cols = st.columns([3, 2, 2, 1])
+            cols[0].markdown("**Serial Number**")
+            cols[1].markdown("**Type**")
+            cols[2].markdown("**Status**")
+            st.markdown("---")
+
+            for probe in filtered_probes:
+                cols = st.columns([3, 2, 2, 1])
+                with cols[0]:
+                    st.write(probe['serial'])
+                with cols[1]:
+                    st.write(probe['type'])
+                with cols[2]:
+                    status_color = {
+                        'Instock': '#FFD700',
+                        'Calibrated': '#90EE90',
+                        'Shipped': '#87CEEB',
+                        'Scraped': '#FFB6C6'
+                    }.get(probe['status'], '#FFFFFF')
+                    st.markdown(f"""
+                        <span style='
+                            background-color: {status_color}40;
+                            padding: 3px 8px;
+                            border-radius: 12px;
+                            font-size: 0.9em;
+                        '>
+                            {probe['status']}
+                        </span>
+                    """, unsafe_allow_html=True)
+                with cols[3]:
+                    if st.button("Select", key=f"select_{probe['serial']}"):
+                        st.session_state.selected_probe = probe['serial']
+                        st.rerun()
+        else:
+            st.info("No matching probes found.")
+
+    # Show calibration form if probe is selected
+    if hasattr(st.session_state, 'selected_probe'):
+        selected_serial = st.session_state.selected_probe
+        probe = find_probe(selected_serial)
+        
+        if probe is None:
             st.error("❌ Probe not found in inventory.")
             return
             
-        probe = probe_df.iloc[0]
+        # Clear separation between search and calibration
+        st.markdown("---")
         
-        # Display probe information in a card
-        st.markdown("""
-            <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; 
-            border-left: 5px solid #0071ba; margin-bottom: 20px;'>
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([2,2,1])
-        with col1:
-            st.markdown(f"""
-                <h3 style='margin:0;'>{probe['Serial Number']}</h3>
-                <p style='margin:0;'>{probe['Type']}</p>
-                <p style='margin:0; color: #666;'>{probe['Manufacturer']}</p>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-                <p style='margin:0;'><strong>KETOS P/N:</strong> {probe['KETOS P/N']}</p>
-                <p style='margin:0;'><strong>Mfg P/N:</strong> {probe['Mfg P/N']}</p>
-                <p style='margin:0;'><strong>Entry Date:</strong> {probe['Entry Date']}</p>
-            """, unsafe_allow_html=True)
-        with col3:
-            status_color = {
-                'Instock': '#FFD700',
-                'Calibrated': '#90EE90',
-                'Shipped': '#87CEEB',
-                'Scraped': '#FFB6C6'
-            }.get(probe['Status'], '#FFFFFF')
-            
-            st.markdown(f"""
-                <div style='background-color: {status_color}; padding: 10px; 
-                border-radius: 5px; text-align: center;'>
-                    <strong>{probe['Status']}</strong>
+        # Probe details in a clean card
+        st.markdown(f"""
+            <div style='
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px 0;
+                border-left: 4px solid #0071ba;
+            '>
+                <h3 style='margin: 0; color: #0071ba;'>Selected Probe Details</h3>
+                <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;'>
+                    <div>
+                        <strong>Serial Number:</strong> {probe['Serial Number']}<br>
+                        <strong>Type:</strong> {probe['Type']}
+                    </div>
+                    <div>
+                        <strong>Manufacturer:</strong> {probe['Manufacturer']}<br>
+                        <strong>Entry Date:</strong> {probe['Entry Date']}
+                    </div>
+                    <div>
+                        <strong>Status:</strong> {probe['Status']}<br>
+                        <strong>Last Modified:</strong> {probe.get('Last Modified', 'N/A')}
+                    </div>
                 </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+            </div>
+        """, unsafe_allow_html=True)
         
         # Check probe status
         if probe['Status'] == 'Shipped':
             st.warning("⚠️ This probe has been shipped and cannot be calibrated.")
+            if 'Last Modified' in probe:
+                st.info(f"Last modified on: {probe['Last Modified']}")
             return
             
         if probe['Status'] == 'Scraped':
             st.error("❌ This probe has been scraped and cannot be calibrated.")
             return
             
+        if probe['Status'] == 'Calibrated':
+            st.warning(f"⚠️ This probe was already calibrated on {probe['Last Modified']}")
+            
+            # Show existing calibration data
+            if 'Calibration Data' in probe and probe['Calibration Data']:
+                try:
+                    cal_data = json.loads(probe['Calibration Data'])
+                    st.markdown("### Previous Calibration Data")
+                    for key, value in cal_data.items():
+                        if key != 'calibration_date':
+                            st.write(f"**{key}:** {value}")
+                except:
+                    st.error("Error loading previous calibration data")
+            return
+            
         if probe['Status'] != 'Instock':
             st.error("❌ Only probes with 'Instock' status can be calibrated.")
             return
-        
+
         # Calibration form based on probe type
         st.markdown("### Calibration Data")
         calibration_data = None
@@ -743,46 +803,21 @@ def calibration_page():
             calibration_data = render_orp_calibration()
         elif probe['Type'] == "EC Probe":
             calibration_data = render_ec_calibration()
-        
+
         # Save button
-        if calibration_data and st.button("Save Calibration", key="save_cal"):
-            # Validate calibration data
-            errors = validate_calibration_data(probe['Type'], calibration_data)
-            
-            if errors:
-                st.error("Calibration validation failed:")
-                for error in errors:
-                    st.warning(error)
-            else:
-                try:
-                    # Add metadata
-                    calibration_data['calibration_date'] = datetime.now().strftime("%Y-%m-%d")
-                    calibration_data['operator'] = st.session_state.get('username', 'Unknown')
-                    
-                    # Update probe in inventory
-                    probe_idx = probe_df.index[0]
-                    st.session_state.inventory.at[probe_idx, 'Calibration Data'] = json.dumps(calibration_data)
-                    st.session_state.inventory.at[probe_idx, 'Status'] = 'Calibrated'
-                    st.session_state.inventory.at[probe_idx, 'Last Modified'] = datetime.now().strftime("%Y-%m-%d")
-                    st.session_state.inventory.at[probe_idx, 'Next Calibration'] = (
-                        datetime.now() + timedelta(days=365)
-                    ).strftime("%Y-%m-%d")
-                    
-                    # Save to Google Sheets
-                    if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
+        if calibration_data:
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                if st.button("Save Calibration Data", type="primary"):
+                    success = update_probe_calibration(selected_serial, calibration_data)
+                    if success:
                         st.success("✅ Calibration data saved successfully!")
-                        
-                        # Show calibration certificate download option
-                        if st.button("Download Calibration Certificate"):
-                            generate_calibration_certificate(probe, calibration_data)
-                        
                         time.sleep(1)
                         st.rerun()
-                    else:
-                        st.error("Failed to save calibration data")
-                except Exception as e:
-                    st.error(f"Error saving calibration: {str(e)}")
-                    logger.error(f"Calibration save error: {str(e)}")
+            with col2:
+                if st.button("Clear Form"):
+                    del st.session_state.selected_probe
+                    st.rerun()
 
 if __name__ == "__main__":
     calibration_page()
