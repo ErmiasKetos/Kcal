@@ -918,12 +918,134 @@ def calibration_page():
         """, unsafe_allow_html=True)
         
         # Check probe status
-        if probe['Status'] == 'Shipped':
-            st.warning("⚠️ This probe has been shipped and cannot be calibrated.")
-            if 'Last Modified' in probe:
-                st.info(f"Last modified on: {probe['Last Modified']}")
-            return
+def display_shipped_probe_info(probe):
+    """Display detailed information for shipped probes."""
+    st.markdown("""
+        <style>
+            .shipped-probe-card {
+                background: #f8f9fa;
+                padding: 20px;
+                border-radius: 10px;
+                border-left: 4px solid #4169E1;
+                margin: 20px 0;
+            }
+            .calibration-details {
+                background: white;
+                padding: 15px;
+                border-radius: 8px;
+                margin-top: 15px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .info-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-top: 10px;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Basic probe info
+    st.markdown(f"""
+        <div class="shipped-probe-card">
+            <h3 style="color: #4169E1; margin-top: 0;">📦 Shipped Probe Information</h3>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Create columns for information display
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("#### 📋 Probe Details")
+        st.markdown(f"""
+            - **Serial Number:** {probe['Serial Number']}
+            - **Type:** {probe['Type']}
+            - **Manufacturer:** {probe['Manufacturer']}
+            - **Ship Date:** {probe.get('Last Modified', 'N/A')}
+        """)
+
+    with col2:
+        st.markdown("#### 📅 Calibration Timeline")
+        st.markdown(f"""
+            - **Last Calibration:** {probe.get('Last Modified', 'N/A')}
+            - **Next Calibration Due:** {probe.get('Next Calibration', 'N/A')}
+            - **Calibrated By:** {probe.get('Operator', 'N/A')}
+        """)
+
+    # Display calibration data if available
+    if 'Calibration Data' in probe and probe['Calibration Data']:
+        try:
+            cal_data = json.loads(probe['Calibration Data'])
+            st.markdown("#### 📊 Final Calibration Results")
             
+            if probe['Type'] == "pH Probe":
+                display_ph_calibration_data(cal_data)
+            elif probe['Type'] == "DO Probe":
+                display_do_calibration_data(cal_data)
+            elif probe['Type'] == "ORP Probe":
+                display_orp_calibration_data(cal_data)
+            elif probe['Type'] == "EC Probe":
+                display_ec_calibration_data(cal_data)
+
+        except json.JSONDecodeError:
+            st.error("Error loading calibration data")
+    else:
+        st.info("No calibration data available for this probe")
+
+def display_ph_calibration_data(cal_data):
+    """Display pH probe calibration data."""
+    buffers = ["pH 4", "pH 7", "pH 10"]
+    
+    for buffer in buffers:
+        if f"{buffer}_initial" in cal_data:
+            with st.expander(f"{buffer} Buffer Results", expanded=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"""
+                        - Initial pH: {cal_data.get(f'{buffer}_initial', 'N/A')}
+                        - Initial mV: {cal_data.get(f'{buffer}_initial_mv', 'N/A')}
+                    """)
+                with col2:
+                    st.markdown(f"""
+                        - Final pH: {cal_data.get(f'{buffer}_calibrated', 'N/A')}
+                        - Final mV: {cal_data.get(f'{buffer}_calibrated_mv', 'N/A')}
+                    """)
+
+def display_do_calibration_data(cal_data):
+    """Display DO probe calibration data."""
+    st.markdown("##### Zero Point (0% DO)")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+            - Initial: {cal_data.get('zero_initial', 'N/A')}%
+            - Temperature: {cal_data.get('temperature', 'N/A')}°C
+        """)
+    with col2:
+        st.markdown(f"""
+            - Final: {cal_data.get('zero_final', 'N/A')}%
+            - Pressure: {cal_data.get('pressure', 'N/A')} mmHg
+        """)
+
+    st.markdown("##### Saturation Point (100% DO)")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+            - Initial: {cal_data.get('sat_initial', 'N/A')}%
+            - mg/L Reading: {cal_data.get('sat_mg_l', 'N/A')} mg/L
+        """)
+    with col2:
+        st.markdown(f"""
+            - Final: {cal_data.get('sat_final', 'N/A')}%
+            - Temperature: {cal_data.get('sat_temp', 'N/A')}°C
+        """)
+
+# Add similar functions for ORP and EC probes...
+
+# In your main calibration page, replace the shipped probe check with:
+        if probe['Status'] == 'Shipped':
+            display_shipped_probe_info(probe)
+            return
+        
         if probe['Status'] == 'Scraped':
             st.error("❌ This probe has been scraped and cannot be calibrated.")
             return
