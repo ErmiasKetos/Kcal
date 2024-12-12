@@ -1,9 +1,12 @@
+
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import gspread
 from google.oauth2 import service_account
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,31 +44,7 @@ class InventoryManager:
                 ]
             )
             self.client = gspread.authorize(credentials)
-            spreadsheet = self.client.open_by_key(self.sheet_id)
-    
-            # Try to get the worksheet, create if it doesn't exist
-            try:
-                self.worksheet = spreadsheet.worksheet(self.worksheet_name)
-            except gspread.exceptions.WorksheetNotFound:
-                # Create new worksheet
-                self.worksheet = spreadsheet.add_worksheet(
-                    title=self.worksheet_name,
-                    rows=1000,
-                    cols=20
-                )
-                # Initialize headers
-                headers = [
-                    "Serial Number", "Type", "Manufacturer", "KETOS P/N",
-                    "Mfg P/N", "Next Calibration", "Status", "Entry Date",
-                    "Last Modified", "Change Date", "Calibration Data"
-                ]
-                self.worksheet.append_row(headers)
-                # Format header row
-                self.worksheet.format('A1:K1', {
-                    "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
-                    "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
-                })
-    
+            self.worksheet = self.client.open_by_key(self.sheet_id).worksheet(self.worksheet_name)
             logger.info("Successfully initialized Google Sheets connection")
         except Exception as e:
             logger.error(f"Failed to initialize sheets connection: {str(e)}")
@@ -88,34 +67,15 @@ class InventoryManager:
                 logger.info(f"Loaded inventory from Google Sheets: {len(df)} records")
         except Exception as e:
             logger.error(f"Error initializing inventory: {str(e)}")
+            # Create empty inventory with required columns
             st.session_state.inventory = pd.DataFrame(columns=[
                 "Serial Number", "Type", "Manufacturer", "KETOS P/N",
                 "Mfg P/N", "Next Calibration", "Status", "Entry Date",
                 "Last Modified", "Change Date", "Calibration Data"
             ])
 
-    def get_filtered_inventory(self, status_filter="All"):
-        """Get filtered inventory based on status"""
-        try:
-            if status_filter == "All":
-                return st.session_state.inventory
-            return st.session_state.inventory[st.session_state.inventory['Status'] == status_filter]
-        except Exception as e:
-            logger.error(f"Error filtering inventory: {str(e)}")
-            return pd.DataFrame()
-
-    def style_inventory_dataframe(self, df):
-        """Apply color styling to inventory dataframe based on status"""
-        try:
-            def color_status(val):
-                return f'background-color: {STATUS_COLORS.get(val, "white")}'
-            return df.style.applymap(color_status, subset=['Status'])
-        except Exception as e:
-            logger.error(f"Error styling dataframe: {str(e)}")
-            return df
-
     def save_inventory(self, inventory_df):
-        """Save inventory to Google Sheets with backup"""
+        """Save inventory to Google Sheets."""
         try:
             # Update main worksheet
             headers = inventory_df.columns.tolist()
@@ -132,26 +92,25 @@ class InventoryManager:
                 "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
             })
 
-            # Create backup if it's backup day
-            if datetime.now().day % 5 == 0:
-                try:
-                    backup_sheet_name = f"Backup_{datetime.now().strftime('%Y%m%d')}"
-                    sheet = self.client.open_by_key(self.sheet_id)
-                    backup_worksheet = sheet.add_worksheet(backup_sheet_name, 1000, 100)
-                    backup_worksheet.update('A1', [headers])
-                    backup_worksheet.update('A2', data)
-                    logger.info(f"Created backup worksheet: {backup_sheet_name}")
-                except Exception as e:
-                    logger.error(f"Backup creation failed: {str(e)}")
-
             st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logger.info("Successfully saved inventory to Google Sheets")
             return True
         except Exception as e:
             logger.error(f"Error saving inventory: {str(e)}")
             return False
 
+    def get_filtered_inventory(self, status_filter="All"):
+        """Get filtered inventory based on status."""
+        try:
+            if status_filter == "All":
+                return st.session_state.inventory
+            return st.session_state.inventory[st.session_state.inventory['Status'] == status_filter]
+        except Exception as e:
+            logger.error(f"Error filtering inventory: {str(e)}")
+            return pd.DataFrame()
+
     def update_probe_status(self, serial_number, new_status):
-        """Update probe status and metadata"""
+        """Update probe status and metadata."""
         try:
             if serial_number in st.session_state.inventory['Serial Number'].values:
                 mask = st.session_state.inventory['Serial Number'] == serial_number
@@ -162,11 +121,11 @@ class InventoryManager:
                 return self.save_inventory(st.session_state.inventory)
             return False
         except Exception as e:
-            logger.error(f"Error updating status: {str(e)}")
+            logger.error(f"Error updating probe status: {str(e)}")
             return False
 
     def get_next_serial_number(self, probe_type, manufacturing_date):
-        """Generate sequential serial number"""
+        """Generate sequential serial number."""
         try:
             existing_serials = st.session_state.inventory[
                 st.session_state.inventory['Type'] == probe_type
@@ -189,7 +148,7 @@ class InventoryManager:
             return None
 
     def add_new_probe(self, probe_data):
-        """Add a new probe to the inventory"""
+        """Add a new probe to the inventory."""
         try:
             probe_data['Entry Date'] = datetime.now().strftime('%Y-%m-%d')
             probe_data['Last Modified'] = datetime.now().strftime('%Y-%m-%d')
@@ -208,7 +167,7 @@ class InventoryManager:
             return False
 
     def verify_connection(self):
-        """Verify connection to Google Sheets"""
+        """Verify connection to Google Sheets."""
         try:
             self.worksheet.get_all_values()
             return True
