@@ -1,4 +1,3 @@
-# src/inventory_review.py
 
 import streamlit as st
 import pandas as pd
@@ -7,7 +6,7 @@ import json
 import time
 from .inventory_manager import STATUS_COLORS
 
-# Constants for the inventory review
+# Constants for inventory review
 ESSENTIAL_COLUMNS = [
     "Serial Number", "Type", "Status", "Entry Date", 
     "Next Calibration", "Last Modified", "Registered By", "Calibrated By"
@@ -198,22 +197,53 @@ def render_advanced_filters(df):
 
     return filtered_df
 
+def handle_click():
+    """Handle table interaction."""
+    if st.session_state.inventory_editor.get('edited_rows'):
+        for idx in st.session_state.inventory_editor['edited_rows']:
+            row = st.session_state.inventory[idx]
+            serial = row['Serial Number']
+            with st.popover(f"Actions for {serial}", use_container_width=True):
+                action = st.radio(
+                    "Choose action:",
+                    ["Calibrate", "Change Status"],
+                    key=f"action_{serial}",
+                    horizontal=True
+                )
+                
+                if action == "Calibrate":
+                    if st.button("Proceed to Calibration", type="primary", key=f"cal_{serial}"):
+                        st.session_state.selected_probe = serial
+                        st.session_state.page = "Probe Calibration"
+                        st.rerun()
+                else:
+                    new_status = st.selectbox(
+                        "Select new status:",
+                        ["Instock", "Calibrated", "Shipped", "Scraped"],
+                        key=f"status_{serial}"
+                    )
+                    if st.button("Update Status", type="primary", key=f"update_{serial}"):
+                        if st.session_state.inventory_manager.update_probe_status(serial, new_status):
+                            st.success(f"Updated status to {new_status}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to update status")
 
 def render_inventory_table(filtered_df):
     """Render the inventory data table."""
-    # Configure columns with colored status
+    # Column configuration
     column_config = {
         "Serial Number": st.column_config.Column(
             "Serial Number",
             help="Click to manage probe",
-            required=True,
             width="medium"
         ),
         "Type": st.column_config.SelectboxColumn(
             "Type",
             help="Type of probe",
             width="medium",
-            options=sorted(filtered_df['Type'].unique().tolist())
+            options=sorted(filtered_df['Type'].unique())
         ),
         "Status": st.column_config.Column(
             "Status",
@@ -277,7 +307,7 @@ def render_inventory_table(filtered_df):
         </style>
     """, unsafe_allow_html=True)
     
-    # Render table and get edited data
+    # Render table
     edited_df = st.data_editor(
         display_df,
         column_config=column_config,
@@ -285,44 +315,11 @@ def render_inventory_table(filtered_df):
         hide_index=True,
         num_rows="dynamic",
         key="inventory_editor",
-        on_change=handle_table_click
+        on_change=handle_click
     )
 
     return edited_df
 
-def handle_table_click():
-    """Handle clicks in the table."""
-    if 'edited_rows' in st.session_state.inventory_editor:
-        for idx, changes in st.session_state.inventory_editor['edited_rows'].items():
-            if 'Serial Number' in changes:
-                serial = changes['Serial Number']
-                # Create popup for actions
-                with st.popover(f"Actions for {serial}"):
-                    action = st.radio(
-                        "Choose action:",
-                        ["Calibrate", "Change Status"],
-                        key=f"action_{serial}"
-                    )
-                    
-                    if action == "Calibrate":
-                        if st.button("Go to Calibration"):
-                            st.session_state.selected_probe = serial
-                            st.session_state.page = "Probe Calibration"
-                            st.rerun()
-                    
-                    elif action == "Change Status":
-                        new_status = st.selectbox(
-                            "New Status:",
-                            ["Instock", "Calibrated", "Shipped", "Scraped"],
-                            key=f"status_{serial}"
-                        )
-                        if st.button("Update Status"):
-                            if st.session_state.inventory_manager.update_probe_status(serial, new_status):
-                                st.success(f"Status updated to {new_status}")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("Failed to update status")
 def render_tools_section(filtered_df, df):
     """Render tools and system status section."""
     col1, col2 = st.columns(2)
@@ -346,15 +343,6 @@ def render_tools_section(filtered_df, df):
         else:
             st.error("❌ Database Connection Error")
 
-    with st.expander("🛠️ Debug Information", expanded=False):
-        st.json({
-            "Total Records": len(df),
-            "Filtered Records": len(filtered_df),
-            "Last Save": st.session_state.get('last_save_time', 'Never'),
-            "Current User": st.session_state.get('username', 'Not logged in'),
-            "Connection Status": "Connected" if st.session_state.inventory_manager.verify_connection() else "Disconnected"
-        })
-
 def inventory_review_page():
     """Main inventory review page."""
     st.markdown("# 📦 Inventory Review")
@@ -377,6 +365,7 @@ def inventory_review_page():
     with tab2:
         filtered_df = render_advanced_filters(df)
         edited_df = render_inventory_table(filtered_df)
+        
         if not edited_df.equals(filtered_df):
             if st.button("Save Changes", type="primary"):
                 if st.session_state.inventory_manager.save_inventory(edited_df):
