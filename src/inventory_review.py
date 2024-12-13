@@ -36,6 +36,19 @@ STATUS_INFO = {
     }
 }
 
+def check_backup_needed():
+    """Check if daily backup is needed."""
+    if 'last_backup_date' not in st.session_state:
+        st.session_state.last_backup_date = None
+
+    if (st.session_state.last_backup_date is None or 
+        datetime.now().date() > st.session_state.last_backup_date):
+        if st.session_state.inventory_manager.create_backup():
+            st.session_state.last_backup_date = datetime.now().date()
+            return True
+    return False
+
+
 def render_status_legend():
     """Render status color legend with descriptions."""
     st.markdown("""
