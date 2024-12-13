@@ -187,10 +187,11 @@ def render_inventory_table(filtered_df):
             help="Type of probe",
             width="medium",
         ),
-        "Status": st.column_config.TextColumn(
+        "Status": st.column_config.SelectboxColumn(  # Changed to SelectboxColumn
             "Status",
             help="Current status of probe",
             width="small",
+            options=list(STATUS_COLORS.keys())
         ),
         "Entry Date": st.column_config.TextColumn(
             "Entry Date",
@@ -219,21 +220,43 @@ def render_inventory_table(filtered_df):
         )
     }
 
-    # Apply status colors
-    display_df['Status'] = display_df['Status'].apply(
-        lambda x: f"""
-            <div style='
-                background-color: {STATUS_COLORS.get(x, "#CCCCCC")}40;
-                color: {STATUS_COLORS.get(x, "#000000")};
+    # Custom styling for the data editor
+    st.markdown("""
+        <style>
+            /* Status cell styling */
+            .stDataFrame td:nth-child(4) {  /* Adjust column number as needed */
+                padding: 0 !important;
+            }
+            
+            .status-cell {
                 padding: 4px 8px;
                 border-radius: 12px;
                 text-align: center;
                 font-weight: 500;
-            '>
-                {x}
-            </div>
-        """
-    )
+                margin: 2px;
+                display: inline-block;
+                min-width: 100px;
+            }
+            
+            /* Status-specific colors */
+            .status-Instock {
+                background-color: rgba(255, 215, 0, 0.2);
+                color: #FFD700;
+            }
+            .status-Calibrated {
+                background-color: rgba(50, 205, 50, 0.2);
+                color: #32CD32;
+            }
+            .status-Shipped {
+                background-color: rgba(65, 105, 225, 0.2);
+                color: #4169E1;
+            }
+            .status-Scraped {
+                background-color: rgba(220, 20, 60, 0.2);
+                color: #DC143C;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     # Render table
     edited_df = st.data_editor(
@@ -275,7 +298,7 @@ def render_inventory_table(filtered_df):
         edited_df = edited_df.drop('Action', axis=1)
 
     return edited_df
-
+    
 def render_tools_section(filtered_df, df):
     """Render tools and system status section."""
     col1, col2 = st.columns(2)
