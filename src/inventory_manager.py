@@ -142,34 +142,34 @@ class InventoryManager:
             return False
 
     def create_backup(self):
-    """Create a backup worksheet."""
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"Backup_{timestamp}"
-        
-        # Create new worksheet for backup
-        spreadsheet = self.client.open_by_key(self.sheet_id)
-        backup_worksheet = spreadsheet.add_worksheet(backup_name, 1000, 100)
-        
-        # Copy data to backup
-        data = self.worksheet.get_all_records()
-        if data:
-            headers = list(data[0].keys())
-            values = [list(d.values()) for d in data]
-            backup_worksheet.update('A1', [headers])
-            backup_worksheet.update('A2', values)
-        
-        # Keep only last 5 backups
-        all_worksheets = spreadsheet.worksheets()
-        backup_sheets = [ws for ws in all_worksheets if ws.title.startswith("Backup_")]
-        if len(backup_sheets) > 5:
-            oldest_backup = min(backup_sheets, key=lambda x: x.title)
-            spreadsheet.del_worksheet(oldest_backup)
+        """Create a backup worksheet."""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"Backup_{timestamp}"
             
-        return True
-    except Exception as e:
-        logger.error(f"Backup failed: {str(e)}")
-        return False
+            # Create new worksheet for backup
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+            backup_worksheet = spreadsheet.add_worksheet(backup_name, 1000, 100)
+            
+            # Copy data to backup
+            data = self.worksheet.get_all_records()
+            if data:
+                headers = list(data[0].keys())
+                values = [list(d.values()) for d in data]
+                backup_worksheet.update('A1', [headers])
+                backup_worksheet.update('A2', values)
+            
+            # Keep only last 5 backups
+            all_worksheets = spreadsheet.worksheets()
+            backup_sheets = [ws for ws in all_worksheets if ws.title.startswith("Backup_")]
+            if len(backup_sheets) > 5:
+                oldest_backup = min(backup_sheets, key=lambda x: x.title)
+                spreadsheet.del_worksheet(oldest_backup)
+                
+            return True
+        except Exception as e:
+            logger.error(f"Backup failed: {str(e)}")
+            return False
         
     def get_filtered_inventory(self, status_filter="All"):
         """Get filtered inventory based on status."""
