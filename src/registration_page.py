@@ -1,3 +1,4 @@
+
 # src/registration_page.py
 
 import streamlit as st
@@ -53,76 +54,168 @@ def registration_page():
     expire_date = manufacturing_date + timedelta(days=service_years * 365)
     serial_number = st.session_state.inventory_manager.get_next_serial_number(probe_type, manufacturing_date)
     
-    # Display Serial Number with Print Button
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        st.markdown(f"""
-            <div style="font-family: Arial; font-size: 16px; padding-top: 10px;">
-                Generated Serial Number: 
-                <span style="font-weight: bold; color: #0071ba;">{serial_number}</span>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-            <div style="padding-top: 10px;">
-                <button onclick="printLabel()" style="padding: 5px 15px; cursor: pointer;">
-                    🖨️ Print Label
-                </button>
-            </div>
-            <iframe id="printFrame" style="display: none;"></iframe>
-            <script>
-                function printLabel() {{
-                    const content = `
-                        <html>
-                            <head>
-                                <style>
-                                    @page {{
-                                        size: 2.25in 1.25in;
-                                        margin: 0;
-                                    }}
-                                    body {{
-                                        width: 2.25in;
-                                        height: 1.25in;
-                                        margin: 0;
-                                        display: flex;
-                                        justify-content: center;
-                                        align-items: center;
-                                        font-family: Arial, sans-serif;
-                                    }}
-                                    .label {{
-                                        text-align: center;
-                                        font-size: 16pt;
-                                        font-weight: bold;
-                                    }}
-                                </style>
-                            </head>
-                            <body>
-                                <div class="label">{serial_number}</div>
-                            </body>
-                        </html>
-                    `;
-                    const frame = document.getElementById('printFrame');
-                    frame.contentWindow.document.open();
-                    frame.contentWindow.document.write(content);
-                    frame.contentWindow.document.close();
-
-                    // Add an event listener for when the iframe content is loaded
-                    frame.onload = function() {{
-                        setTimeout(() => {{
-                            frame.contentWindow.focus();
-                            frame.contentWindow.print();
-                        }}, 250);
-                    }};
+    # Display Serial Number and Print Section
+    st.markdown(f"""
+        <style>
+            .serial-container {{
+                background: white;
+                border-radius: 10px;
+                padding: 20px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin: 20px 0;
+            }}
+            
+            .serial-label {{
+                color: #666;
+                font-size: 14px;
+                margin-bottom: 5px;
+            }}
+            
+            .serial-number {{
+                color: #0071ba;
+                font-size: 24px;
+                font-weight: bold;
+                font-family: monospace;
+                padding: 10px;
+                background: #f8f9fa;
+                border-radius: 5px;
+                margin: 10px 0;
+            }}
+            
+            .print-button {{
+                background: #0071ba;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 5px;
+                border: none;
+                cursor: pointer;
+                font-size: 14px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                transition: all 0.3s ease;
+            }}
+            
+            .print-button:hover {{
+                background: #005999;
+                transform: translateY(-1px);
+            }}
+            
+            @media print {{
+                @page {{
+                    size: 2.25in 1.25in;
+                    margin: 0;
                 }}
-            </script>
-        """, unsafe_allow_html=True)
+                body {{
+                    margin: 0;
+                    padding: 0;
+                }}
+                .print-content {{
+                    width: 2.25in;
+                    height: 1.25in;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    text-align: center;
+                }}
+                .serial-number-print {{
+                    font-family: monospace;
+                    font-size: 16pt;
+                    font-weight: bold;
+                }}
+            }}
+            
+            .hidden-print-content {{
+                display: none;
+            }}
+        </style>
 
-    # Save Button
-    if st.button("Register Probe"):
+        <div class="serial-container">
+            <div class="serial-label">Generated Serial Number:</div>
+            <div class="serial-number">{serial_number}</div>
+            <button class="print-button" onclick="printLabel()">
+                🖨️ Print Label
+            </button>
+        </div>
+
+        <div class="hidden-print-content">
+            <div class="serial-number-print">{serial_number}</div>
+        </div>
+
+        <script>
+            function printLabel() {{
+                // Create a new window for printing
+                var printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                    <html>
+                        <head>
+                            <style>
+                                @page {{
+                                    size: 2.25in 1.25in;
+                                    margin: 0;
+                                }}
+                                body {{
+                                    margin: 0;
+                                    padding: 0;
+                                    display: flex;
+                                    justify-content: center;
+                                    align-items: center;
+                                    height: 1.25in;
+                                    font-family: Arial, sans-serif;
+                                }}
+                                .label-content {{
+                                    text-align: center;
+                                }}
+                                .serial-number {{
+                                    font-family: monospace;
+                                    font-size: 16pt;
+                                    font-weight: bold;
+                                }}
+                                .qr-code {{
+                                    margin-top: 5px;
+                                    font-size: 8pt;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class="label-content">
+                                <div class="serial-number">{serial_number}</div>
+                                <div class="qr-code">KETOS Inc.</div>
+                            </div>
+                        </body>
+                    </html>
+                `);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(function() {{
+                    printWindow.print();
+                    printWindow.close();
+                }}, 250);
+            }}
+        </script>
+    """, unsafe_allow_html=True)
+
+    # Save Button with improved styling
+    st.markdown("""
+        <style>
+            .stButton > button {
+                background: #0071ba;
+                color: white;
+                font-weight: 500;
+                padding: 0.5rem 1rem;
+                width: 100%;
+                transition: all 0.3s ease;
+            }
+            .stButton > button:hover {
+                background: #005999;
+                transform: translateY(-2px);
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    if st.button("Register Probe", type="primary"):
         if not all([manufacturer, manufacturer_part_number, ketos_part_number]):
-            st.error("Please fill in all required fields.")
+            st.error("❌ Please fill in all required fields.")
             return
 
         # Prepare probe data
@@ -136,14 +229,15 @@ def registration_page():
             "Entry Date": datetime.now().strftime("%Y-%m-%d"),
             "Last Modified": datetime.now().strftime("%Y-%m-%d"),
             "Change Date": datetime.now().strftime("%Y-%m-%d"),
-            "Calibration Data": {}
+            "Calibration Data": {},
+            "Registered By": st.session_state.get('username', 'Unknown')  # Added registered by field
         }
 
         success = st.session_state.inventory_manager.add_new_probe(probe_data)
         if success:
             st.success(f"✅ Probe {serial_number} registered successfully!")
             st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            time.sleep(1)  # Delay for user feedback
+            time.sleep(1)
             st.rerun()
         else:
             st.error("❌ Failed to register probe.")
@@ -152,6 +246,14 @@ def registration_page():
     if 'last_save_time' in st.session_state:
         st.sidebar.markdown(f"""
             <div style='padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-top: 1rem;'>
-                <p>📊 Last Sync: {st.session_state['last_save_time']}</p>
+                <h4 style='margin: 0; color: #0071ba; font-size: 14px;'>System Status</h4>
+                <div style='display: flex; align-items: center; margin-top: 0.5rem;'>
+                    <div style='width: 8px; height: 8px; border-radius: 50%; 
+                              background: #28a745; margin-right: 8px;'></div>
+                    <span style='font-size: 14px;'>Last Sync: {st.session_state['last_save_time']}</span>
+                </div>
             </div>
         """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    registration_page()
