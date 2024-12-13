@@ -53,19 +53,19 @@ def registration_page():
     service_years = SERVICE_LIFE.get(probe_type, 2)
     expire_date = manufacturing_date + timedelta(days=service_years * 365)
     serial_number = st.session_state.inventory_manager.get_next_serial_number(probe_type, manufacturing_date)
-    
 
-    # Display Serial Number Section
-    st.markdown("""
+
+    # Display Serial Number with Print Button
+    st.markdown(f"""
         <style>
-            .serial-container {
+            .serial-container {{
                 background: white;
                 border-radius: 10px;
                 padding: 20px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                 margin: 20px 0;
-            }
-            .serial-number {
+            }}
+            .serial-number {{
                 color: #0071ba;
                 font-size: 24px;
                 font-weight: bold;
@@ -74,38 +74,100 @@ def registration_page():
                 background: #f8f9fa;
                 border-radius: 5px;
                 margin: 10px 0;
-            }
+            }}
+            .print-button {{
+                background: #0071ba;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 5px;
+                border: none;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .print-button:hover {{
+                background: #005999;
+            }}
+            @media print {{
+                body * {{
+                    visibility: hidden;
+                }}
+                #printable-content, #printable-content * {{
+                    visibility: visible;
+                }}
+                #printable-content {{
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    width: 2.25in;
+                    height: 1.25in;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+                .print-serial {{
+                    font-family: monospace;
+                    font-size: 16pt;
+                    font-weight: bold;
+                }}
+            }}
         </style>
-        """, unsafe_allow_html=True)
-
-    # Create columns for serial number display and print button
-    serial_col1, serial_col2 = st.columns([3, 1])
     
-    with serial_col1:
-        st.markdown(f"""
-            <div class="serial-container">
-                <div>Generated Serial Number:</div>
-                <div class="serial-number">{serial_number}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        <div class="serial-container">
+            <div>Generated Serial Number:</div>
+            <div class="serial-number">{serial_number}</div>
+            <button onclick="printSerialNumber('{serial_number}')" class="print-button">
+                🖨️ Print Label
+            </button>
+        </div>
     
-    with serial_col2:
-        # Create printable content
-        print_content = f"""
-        Generated Serial Number: {serial_number}
-        Type: {probe_type}
-        Manufacturing Date: {manufacturing_date}
-        """
-        
-        # Create a download button that looks like a print button
-        st.download_button(
-            label="🖨️ Print Label",
-            data=print_content,
-            file_name=f"probe_label_{serial_number}.txt",
-            mime="text/plain",
-            key="print_button"
-        )
+        <div id="printable-content" style="display: none;">
+            <div class="print-serial">{serial_number}</div>
+        </div>
+    
+        <script>
+            function printSerialNumber(serialNumber) {{
+                var printWindow = window.open('', '', 'width=600,height=600');
+                printWindow.document.write(`
+                    <html>
+                        <head>
+                            <style>
+                                @page {{
+                                    size: 2.25in 1.25in;
+                                    margin: 0;
+                                }}
+                                body {{
+                                    margin: 0;
+                                    display: flex;
+                                    justify-content: center;
+                                    align-items: center;
+                                    height: 1.25in;
+                                }}
+                                .serial {{
+                                    font-family: monospace;
+                                    font-size: 16pt;
+                                    font-weight: bold;
+                                    text-align: center;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class="serial">${serialNumber}</div>
+                        </body>
+                    </html>
+                `);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(() => {{
+                    printWindow.print();
+                    printWindow.close();
+                }}, 250);
+            }}
+        </script>
+    """, unsafe_allow_html=True)
 
+    
     # Save Button with improved styling
     st.markdown("""
         <style>
