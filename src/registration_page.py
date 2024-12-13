@@ -1,4 +1,3 @@
-
 # src/registration_page.py
 
 import streamlit as st
@@ -53,8 +52,7 @@ def registration_page():
     service_years = SERVICE_LIFE.get(probe_type, 2)
     expire_date = manufacturing_date + timedelta(days=service_years * 365)
     serial_number = st.session_state.inventory_manager.get_next_serial_number(probe_type, manufacturing_date)
-
-
+    
     # Display Serial Number with Print Button
     st.markdown(f"""
         <style>
@@ -113,7 +111,7 @@ def registration_page():
                 }}
             }}
         </style>
-    
+
         <div class="serial-container">
             <div>Generated Serial Number:</div>
             <div class="serial-number">{serial_number}</div>
@@ -121,11 +119,11 @@ def registration_page():
                 🖨️ Print Label
             </button>
         </div>
-    
+
         <div id="printable-content" style="display: none;">
             <div class="print-serial">{serial_number}</div>
         </div>
-    
+
         <script>
             function printSerialNumber(serialNumber) {{
                 var printWindow = window.open('', '', 'width=600,height=600');
@@ -167,7 +165,6 @@ def registration_page():
         </script>
     """, unsafe_allow_html=True)
 
-    
     # Save Button with improved styling
     st.markdown("""
         <style>
@@ -203,7 +200,7 @@ def registration_page():
             "Last Modified": datetime.now().strftime("%Y-%m-%d"),
             "Change Date": datetime.now().strftime("%Y-%m-%d"),
             "Calibration Data": {},
-            "Registered By": st.session_state.get('username', 'Unknown')  # Added registered by field
+            "Registered By": st.session_state.get('username', 'Unknown')
         }
 
         success = st.session_state.inventory_manager.add_new_probe(probe_data)
