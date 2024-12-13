@@ -124,37 +124,19 @@ def registration_page():
             <div class="print-serial">{serial_number}</div>
         </div>
 
+     
         <script>
             function printSerialNumber(serialNumber) {{
                 var printWindow = window.open('', '', 'width=600,height=600');
-                printWindow.document.write(`
-                    <html>
-                        <head>
-                            <style>
-                                @page {{
-                                    size: 2.25in 1.25in;
-                                    margin: 0;
-                                }}
-                                body {{
-                                    margin: 0;
-                                    display: flex;
-                                    justify-content: center;
-                                    align-items: center;
-                                    height: 1.25in;
-                                }}
-                                .serial {{
-                                    font-family: monospace;
-                                    font-size: 16pt;
-                                    font-weight: bold;
-                                    text-align: center;
-                                }}
-                            </style>
-                        </head>
-                        <body>
-                            <div class="serial">${serialNumber}</div>
-                        </body>
-                    </html>
-                `);
+                var content = '<html><head><style>' +
+                    '@page {{ size: 2.25in 1.25in; margin: 0; }}' +
+                    'body {{ margin: 0; display: flex; justify-content: center; align-items: center; height: 1.25in; }}' +
+                    '.serial {{ font-family: monospace; font-size: 16pt; font-weight: bold; text-align: center; }}' +
+                    '</style></head><body>' +
+                    '<div class="serial">' + serialNumber + '</div>' +
+                    '</body></html>';
+                    
+                printWindow.document.write(content);
                 printWindow.document.close();
                 printWindow.focus();
                 setTimeout(() => {{
