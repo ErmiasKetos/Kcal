@@ -48,7 +48,6 @@ def check_backup_needed():
             return True
     return False
 
-
 def render_status_legend():
     """Render status color legend with descriptions."""
     st.markdown("""
@@ -164,7 +163,6 @@ def render_advanced_filters(df):
 
     return filtered_df
 
-
 def render_inventory_table(filtered_df):
     """Render the inventory data table."""
     # Add an action column to the table
@@ -277,6 +275,58 @@ def render_inventory_table(filtered_df):
         edited_df = edited_df.drop('Action', axis=1)
 
     return edited_df
+
+def render_tools_section(filtered_df, df):
+    """Render tools and system status section."""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Export & Backup Options")
+        col_exp, col_bak = st.columns(2)
+        
+        with col_exp:
+            if st.button("Export Data"):
+                csv = filtered_df.to_csv(index=False)
+                st.download_button(
+                    "📥 Download CSV",
+                    csv,
+                    f"inventory_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv"
+                )
+        
+        with col_bak:
+            if st.button("Create Manual Backup"):
+                if st.session_state.inventory_manager.create_backup():
+                    st.success("✅ Backup created successfully!")
+                    st.session_state.last_backup_date = datetime.now().date()
+                else:
+                    st.error("❌ Failed to create backup")
+    
+    with col2:
+        st.markdown("#### System Status")
+        if st.session_state.inventory_manager.verify_connection():
+            st.success("✅ Connected to Database")
+            
+            # Show backup status
+            if st.session_state.last_backup_date:
+                st.info(f"Last Backup: {st.session_state.last_backup_date}")
+            else:
+                st.warning("No recent backup found")
+            
+            st.info(f"Last Update: {st.session_state.get('last_save_time', 'Never')}")
+        else:
+            st.error("❌ Database Connection Error")
+
+    # Debug Information
+    with st.expander("🛠️ Debug Information", expanded=False):
+        st.json({
+            "Total Records": len(df),
+            "Filtered Records": len(filtered_df),
+            "Last Save": st.session_state.get('last_save_time', 'Never'),
+            "Last Backup": str(st.session_state.get('last_backup_date', 'Never')),
+            "Connection Status": "Connected" if st.session_state.inventory_manager.verify_connection() else "Disconnected"
+        })
+
 def inventory_review_page():
     """Main inventory review page."""
     st.markdown("# 📦 Inventory Review")
@@ -284,6 +334,9 @@ def inventory_review_page():
     if 'inventory_manager' not in st.session_state:
         st.error("Inventory manager not initialized")
         return
+    
+    # Check for daily backup
+    check_backup_needed()
     
     df = st.session_state.inventory
     if df.empty:
@@ -310,25 +363,7 @@ def inventory_review_page():
                     st.error("Failed to save changes")
 
     with tab3:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Export Options")
-            if st.button("Export Filtered Data"):
-                csv = filtered_df.to_csv(index=False)
-                st.download_button(
-                    "📥 Download CSV",
-                    csv,
-                    f"inventory_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    "text/csv"
-                )
-        
-        with col2:
-            st.markdown("#### System Status")
-            if st.session_state.inventory_manager.verify_connection():
-                st.success("✅ Connected to Database")
-                st.info(f"Last Update: {st.session_state.get('last_save_time', 'Never')}")
-            else:
-                st.error("❌ Database Connection Error")
+        render_tools_section(filtered_df, df)
 
 if __name__ == "__main__":
     inventory_review_page()
