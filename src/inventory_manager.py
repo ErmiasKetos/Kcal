@@ -75,16 +75,36 @@ class InventoryManager:
             ])
 
     def save_inventory(self, inventory_df):
-        """Save inventory to Google Sheets."""
+    """Save inventory to Google Sheets with safety measures."""
+    try:
+        if self.worksheet is None:
+            st.error("❌ Cannot save: No connection to Google Sheets")
+            return False
+
+        # First get existing data as backup
         try:
-            # Update main worksheet
-            headers = inventory_df.columns.tolist()
-            data = inventory_df.values.tolist()
-            
-            self.worksheet.clear()
+            backup_data = self.worksheet.get_all_records()
+        except Exception as e:
+            logger.error(f"Failed to create backup: {str(e)}")
+            backup_data = None
+
+        # Prepare new data
+        headers = inventory_df.columns.tolist()
+        data = inventory_df.values.tolist()
+
+        if not data:
+            logger.error("No data to save")
+            return False
+
+        try:
+            # Update in chunks without clearing first
             self.worksheet.update('A1', [headers])
             if data:
-                self.worksheet.update('A2', data)
+                # Update in batches of 1000 rows
+                batch_size = 1000
+                for i in range(0, len(data), batch_size):
+                    batch = data[i:i + batch_size]
+                    self.worksheet.update(f'A{i+2}', batch)
 
             # Format header row
             self.worksheet.format('A1:Z1', {
@@ -92,13 +112,65 @@ class InventoryManager:
                 "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
             })
 
+            # Clean up any extra rows if new data is shorter than original
+            if backup_data and len(data) < len(backup_data):
+                self.worksheet.delete_rows(len(data) + 2, len(backup_data) + 1)
+
             st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logger.info("Successfully saved inventory to Google Sheets")
             return True
+
         except Exception as e:
-            logger.error(f"Error saving inventory: {str(e)}")
+            logger.error(f"Error during save: {str(e)}")
+            # Attempt to restore from backup if save failed
+            if backup_data:
+                try:
+                    backup_headers = list(backup_data[0].keys())
+                    backup_values = [list(d.values()) for d in backup_data]
+                    self.worksheet.clear()
+                    self.worksheet.update('A1', [backup_headers])
+                    self.worksheet.update('A2', backup_values)
+                    st.error("Save failed, restored previous data")
+                except Exception as restore_error:
+                    logger.error(f"Restore failed: {str(restore_error)}")
+                    st.error("⚠️ Critical: Save failed and restore failed. Please contact support.")
             return False
 
+    except Exception as e:
+        logger.error(f"Error saving inventory: {str(e)}")
+        st.error(f"Failed to save inventory: {str(e)}")
+        return False
+
+    def create_backup(self):
+    """Create a backup worksheet."""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"Backup_{timestamp}"
+        
+        # Create new worksheet for backup
+        spreadsheet = self.client.open_by_key(self.sheet_id)
+        backup_worksheet = spreadsheet.add_worksheet(backup_name, 1000, 100)
+        
+        # Copy data to backup
+        data = self.worksheet.get_all_records()
+        if data:
+            headers = list(data[0].keys())
+            values = [list(d.values()) for d in data]
+            backup_worksheet.update('A1', [headers])
+            backup_worksheet.update('A2', values)
+        
+        # Keep only last 5 backups
+        all_worksheets = spreadsheet.worksheets()
+        backup_sheets = [ws for ws in all_worksheets if ws.title.startswith("Backup_")]
+        if len(backup_sheets) > 5:
+            oldest_backup = min(backup_sheets, key=lambda x: x.title)
+            spreadsheet.del_worksheet(oldest_backup)
+            
+        return True
+    except Exception as e:
+        logger.error(f"Backup failed: {str(e)}")
+        return False
+        
     def get_filtered_inventory(self, status_filter="All"):
         """Get filtered inventory based on status."""
         try:
