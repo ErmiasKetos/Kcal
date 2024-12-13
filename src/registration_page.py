@@ -54,24 +54,18 @@ def registration_page():
     expire_date = manufacturing_date + timedelta(days=service_years * 365)
     serial_number = st.session_state.inventory_manager.get_next_serial_number(probe_type, manufacturing_date)
     
-    # Display Serial Number and Print Section
-    st.markdown(f"""
+
+    # Display Serial Number Section
+    st.markdown("""
         <style>
-            .serial-container {{
+            .serial-container {
                 background: white;
                 border-radius: 10px;
                 padding: 20px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                 margin: 20px 0;
-            }}
-            
-            .serial-label {{
-                color: #666;
-                font-size: 14px;
-                margin-bottom: 5px;
-            }}
-            
-            .serial-number {{
+            }
+            .serial-number {
                 color: #0071ba;
                 font-size: 24px;
                 font-weight: bold;
@@ -80,120 +74,37 @@ def registration_page():
                 background: #f8f9fa;
                 border-radius: 5px;
                 margin: 10px 0;
-            }}
-            
-            .print-button {{
-                background: #0071ba;
-                color: white;
-                padding: 8px 16px;
-                border-radius: 5px;
-                border: none;
-                cursor: pointer;
-                font-size: 14px;
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                transition: all 0.3s ease;
-            }}
-            
-            .print-button:hover {{
-                background: #005999;
-                transform: translateY(-1px);
-            }}
-            
-            @media print {{
-                @page {{
-                    size: 2.25in 1.25in;
-                    margin: 0;
-                }}
-                body {{
-                    margin: 0;
-                    padding: 0;
-                }}
-                .print-content {{
-                    width: 2.25in;
-                    height: 1.25in;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    text-align: center;
-                }}
-                .serial-number-print {{
-                    font-family: monospace;
-                    font-size: 16pt;
-                    font-weight: bold;
-                }}
-            }}
-            
-            .hidden-print-content {{
-                display: none;
-            }}
+            }
         </style>
+        """, unsafe_allow_html=True)
 
-        <div class="serial-container">
-            <div class="serial-label">Generated Serial Number:</div>
-            <div class="serial-number">{serial_number}</div>
-            <button class="print-button" onclick="printLabel()">
-                🖨️ Print Label
-            </button>
-        </div>
-
-        <div class="hidden-print-content">
-            <div class="serial-number-print">{serial_number}</div>
-        </div>
-
-        <script>
-            function printLabel() {{
-                // Create a new window for printing
-                var printWindow = window.open('', '_blank');
-                printWindow.document.write(`
-                    <html>
-                        <head>
-                            <style>
-                                @page {{
-                                    size: 2.25in 1.25in;
-                                    margin: 0;
-                                }}
-                                body {{
-                                    margin: 0;
-                                    padding: 0;
-                                    display: flex;
-                                    justify-content: center;
-                                    align-items: center;
-                                    height: 1.25in;
-                                    font-family: Arial, sans-serif;
-                                }}
-                                .label-content {{
-                                    text-align: center;
-                                }}
-                                .serial-number {{
-                                    font-family: monospace;
-                                    font-size: 16pt;
-                                    font-weight: bold;
-                                }}
-                                .qr-code {{
-                                    margin-top: 5px;
-                                    font-size: 8pt;
-                                }}
-                            </style>
-                        </head>
-                        <body>
-                            <div class="label-content">
-                                <div class="serial-number">{serial_number}</div>
-                                <div class="qr-code">KETOS Inc.</div>
-                            </div>
-                        </body>
-                    </html>
-                `);
-                printWindow.document.close();
-                printWindow.focus();
-                setTimeout(function() {{
-                    printWindow.print();
-                    printWindow.close();
-                }}, 250);
-            }}
-        </script>
-    """, unsafe_allow_html=True)
+    # Create columns for serial number display and print button
+    serial_col1, serial_col2 = st.columns([3, 1])
+    
+    with serial_col1:
+        st.markdown(f"""
+            <div class="serial-container">
+                <div>Generated Serial Number:</div>
+                <div class="serial-number">{serial_number}</div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with serial_col2:
+        # Create printable content
+        print_content = f"""
+        Generated Serial Number: {serial_number}
+        Type: {probe_type}
+        Manufacturing Date: {manufacturing_date}
+        """
+        
+        # Create a download button that looks like a print button
+        st.download_button(
+            label="🖨️ Print Label",
+            data=print_content,
+            file_name=f"probe_label_{serial_number}.txt",
+            mime="text/plain",
+            key="print_button"
+        )
 
     # Save Button with improved styling
     st.markdown("""
