@@ -202,7 +202,7 @@ def registration_page():
             "Calibration Data": {},
             "Registered By": st.session_state.get('username', 'Unknown')
             "Calibrated By": "",  
-            "Next Calibration": ""  
+            "Next Calibration": "", 
         }
 
         success = st.session_state.inventory_manager.add_new_probe(probe_data)
