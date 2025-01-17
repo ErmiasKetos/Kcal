@@ -220,8 +220,8 @@ def display_ec_calibration_data(cal_data):
                         - Solution Expiry: {cal_data.get(f'{std_key}_exp', 'N/A')}
                     """)
 
+
 def update_probe_calibration(serial_number, calibration_data):
-    """Update probe calibration data in the inventory."""
     try:
         if serial_number not in st.session_state.inventory['Serial Number'].values:
             st.error(f"Serial number {serial_number} not found in inventory")
@@ -230,6 +230,13 @@ def update_probe_calibration(serial_number, calibration_data):
         probe_idx = st.session_state.inventory[
             st.session_state.inventory['Serial Number'] == serial_number
         ].index[0]
+
+        # Convert date objects to strings
+        for key, value in calibration_data.items():
+            if isinstance(value, date):
+                calibration_data[key] = value.strftime('%Y-%m-%d')
+            elif isinstance(value, float) and pd.isna(value):
+                calibration_data[key] = ''
 
         # Add metadata
         calibration_data['calibration_date'] = datetime.now().strftime("%Y-%m-%d")
@@ -243,12 +250,7 @@ def update_probe_calibration(serial_number, calibration_data):
         ).strftime("%Y-%m-%d")
         st.session_state.inventory.at[probe_idx, 'Status'] = "Calibrated"
         
-        if st.session_state.inventory_manager.save_inventory(st.session_state.inventory):
-            logger.info(f"Successfully updated calibration data for probe: {serial_number}")
-            return True
-        
-        logger.error(f"Failed to save calibration data for probe: {serial_number}")
-        return False
+        return st.session_state.inventory_manager.save_inventory(st.session_state.inventory)
             
     except Exception as e:
         logger.error(f"Error updating calibration data: {str(e)}")
