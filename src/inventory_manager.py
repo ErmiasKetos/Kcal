@@ -87,7 +87,15 @@ class InventoryManager:
             except Exception as e:
                 logger.error(f"Failed to create backup: {str(e)}")
                 backup_data = None
-    
+            
+            # Clean NaN values and prepare data
+            inventory_df = inventory_df.fillna('')  
+            headers = inventory_df.columns.tolist()
+            data = inventory_df.values.tolist()
+            
+            # Convert any remaining float values to avoid NaN
+            data = [['' if isinstance(x, float) and pd.isna(x) else x for x in row] for row in data]
+  
             # Prepare new data
             headers = inventory_df.columns.tolist()
             data = inventory_df.values.tolist()
