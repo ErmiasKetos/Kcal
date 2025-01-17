@@ -486,11 +486,9 @@ def render_ph_calibration():
             if buffer['name'] == "pH 10":
                 ph_data['slope_mv_10'] = st.number_input(
                     "Slope (%)",
-                    min_value=-65.0,
-                    max_value=-45.0,
-                    value=-59.2,
-                    step=0.1,
-                    help="Theoretical value is -59.2 mV/pH at 25°C",
+                    min_value=85,
+                    max_value=115,
+                   
                     key="slope_10"
                 )
                 if ph_data['slope_mv_10'] > 85 or ph_data['slope_mv_10'] < 115:
@@ -500,11 +498,9 @@ def render_ph_calibration():
             if buffer['name'] == "pH 4":
                 ph_data['slope_mv'] = st.number_input(
                     "Slope (%)",
-                    min_value=-65.0,
-                    max_value=-45.0,
-                    value=-59.2,
-                    step=0.1,
-                    help="Theoretical value is -59.2 mV/pH at 25°C"
+                    min_value=85,
+                    max_value=115,
+                    
                 )
                 if ph_data['slope_mv'] > 85 or ph_data['slope_mv'] < 115:
                     st.warning("⚠️ Slope is outside optimal range (85 to 115)")
