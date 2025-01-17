@@ -297,6 +297,18 @@ CALIBRATION_STYLES = """
 </style>
 """
 
+
+def calculate_mv_from_ph(ph_value, temperature=25.0):
+    """Calculate mV from pH using Nernst equation."""
+    try:
+        ph_value = float(ph_value)
+        temperature = float(temperature)
+        nernst_factor = 0.198968 * (temperature + 273.15)  # RT/F
+        mv = -nernst_factor * (ph_value - 7)
+        return round(mv, 1)
+    except (ValueError, TypeError):
+        return None
+
 def render_ph_calibration():
     """Render pH probe calibration form."""
     st.markdown("""
@@ -403,10 +415,10 @@ def render_ph_calibration():
         with col2:
             st.markdown("#### 📊 Measurements")
             
-            # Regular pH measurements
             measurement_cols = st.columns(2)
             with measurement_cols[0]:
-                ph_data[f"{buffer['name']}_initial"] = st.number_input(
+                # Initial pH and mV
+                initial_ph = st.number_input(
                     "Initial Reading (pH)",
                     min_value=0.0,
                     max_value=14.0,
@@ -414,29 +426,47 @@ def render_ph_calibration():
                     key=f"{buffer['name']}_initial_ph",
                     help=f"Target: {buffer['range']}"
                 )
+                ph_data[f"{buffer['name']}_initial"] = initial_ph
+                
+                # Calculate and display initial mV
+                calculated_mv = calculate_mv_from_ph(initial_ph, ph_data['temperature'])
+                st.text(f"Calculated mV: {calculated_mv if calculated_mv is not None else 'N/A'}")
+                
+                # Allow manual override of initial mV
                 ph_data[f"{buffer['name']}_initial_mv"] = st.number_input(
-                    "Initial mV",
+                    "Initial mV (Override calculated value)",
                     min_value=-2000.0,
                     max_value=2000.0,
+                    value=calculated_mv if calculated_mv is not None else 0.0,
                     step=0.1,
                     key=f"{buffer['name']}_initial_mv",
                     help=f"Expected: {buffer['expected_mv']}"
                 )
 
             with measurement_cols[1]:
-                ph_data[f"{buffer['name']}_calibrated"] = st.number_input(
+                # Final pH and mV
+                final_ph = st.number_input(
                     "Final Reading (pH)",
                     min_value=0.0,
                     max_value=14.0,
                     step=0.01,
                     key=f"{buffer['name']}_final_ph"
                 )
+                ph_data[f"{buffer['name']}_calibrated"] = final_ph
+                
+                # Calculate and display final mV
+                calculated_mv_final = calculate_mv_from_ph(final_ph, ph_data['temperature'])
+                st.text(f"Calculated mV: {calculated_mv_final if calculated_mv_final is not None else 'N/A'}")
+                
+                # Allow manual override of final mV
                 ph_data[f"{buffer['name']}_calibrated_mv"] = st.number_input(
-                    "Final mV",
+                    "Final mV (Override calculated value)",
                     min_value=-2000.0,
                     max_value=2000.0,
+                    value=calculated_mv_final if calculated_mv_final is not None else 0.0,
                     step=0.1,
-                    key=f"{buffer['name']}_final_mv"
+                    key=f"{buffer['name']}_final_mv",
+                    help=f"Expected: {buffer['expected_mv']}"
                 )
 
             # Add slope and offset fields in the measurements column for pH 7
