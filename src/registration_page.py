@@ -200,7 +200,7 @@ def registration_page():
             "Last Modified": datetime.now().strftime("%Y-%m-%d"),
             "Change Date": datetime.now().strftime("%Y-%m-%d"),
             "Calibration Data": {},
-            "Registered By": st.session_state.get('username', 'Unknown')
+            "Registered By": st.session_state.get('username', 'Unknown'),
             "Calibrated By": "",  
             "Next Calibration": "", 
         }
