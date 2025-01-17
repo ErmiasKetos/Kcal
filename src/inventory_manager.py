@@ -74,80 +74,77 @@ class InventoryManager:
                 "Last Modified", "Change Date", "Calibration Data"
             ])
 
+    
     def save_inventory(self, inventory_df):
-        """Save inventory to Google Sheets with safety measures."""
-        try:
-            if self.worksheet is None:
-                st.error("❌ Cannot save: No connection to Google Sheets")
-                return False
-    
-            # First get existing data as backup
-            try:
-                backup_data = self.worksheet.get_all_records()
-            except Exception as e:
-                logger.error(f"Failed to create backup: {str(e)}")
-                backup_data = None
-            
-            # Clean NaN values and prepare data
-            inventory_df = inventory_df.fillna('')  
-            headers = inventory_df.columns.tolist()
-            data = inventory_df.values.tolist()
-            
-            # Convert any remaining float values to avoid NaN
-            data = [['' if isinstance(x, float) and pd.isna(x) else x for x in row] for row in data]
-  
-            # Prepare new data
-            headers = inventory_df.columns.tolist()
-            data = inventory_df.values.tolist()
-    
-            if not data:
-                logger.error("No data to save")
-                return False
-    
-            try:
-                # Update in chunks without clearing first
-                self.worksheet.update('A1', [headers])
-                if data:
-                    # Update in batches of 1000 rows
-                    batch_size = 1000
-                    for i in range(0, len(data), batch_size):
-                        batch = data[i:i + batch_size]
-                        self.worksheet.update(f'A{i+2}', batch)
-    
-                # Format header row
-                self.worksheet.format('A1:Z1', {
-                    "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
-                    "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
-                })
-    
-                # Clean up any extra rows if new data is shorter than original
-                if backup_data and len(data) < len(backup_data):
-                    self.worksheet.delete_rows(len(data) + 2, len(backup_data) + 1)
-    
-                st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                logger.info("Successfully saved inventory to Google Sheets")
-                return True
-    
-            except Exception as e:
-                logger.error(f"Error during save: {str(e)}")
-                # Attempt to restore from backup if save failed
-                if backup_data:
-                    try:
-                        backup_headers = list(backup_data[0].keys())
-                        backup_values = [list(d.values()) for d in backup_data]
-                        self.worksheet.clear()
-                        self.worksheet.update('A1', [backup_headers])
-                        self.worksheet.update('A2', backup_values)
-                        st.error("Save failed, restored previous data")
-                    except Exception as restore_error:
-                        logger.error(f"Restore failed: {str(restore_error)}")
-                        st.error("⚠️ Critical: Save failed and restore failed. Please contact support.")
-                return False
-    
-        except Exception as e:
-            logger.error(f"Error saving inventory: {str(e)}")
-            st.error(f"Failed to save inventory: {str(e)}")
+    """Save inventory to Google Sheets with safety measures."""
+    try:
+        if self.worksheet is None:
+            st.error("❌ Cannot save: No connection to Google Sheets")
             return False
+
+        # First get existing data as backup
+        try:
+            backup_data = self.worksheet.get_all_records()
+        except Exception as e:
+            logger.error(f"Failed to create backup: {str(e)}")
+            backup_data = None
+
+        # Clean and prepare data
+        inventory_df = inventory_df.fillna('')  # Replace NaN with empty string
+        
+        # Ensure Calibration Data is properly formatted
+        if 'Calibration Data' in inventory_df.columns:
+            inventory_df['Calibration Data'] = inventory_df['Calibration Data'].apply(
+                lambda x: '' if pd.isna(x) or x == {} or x == 'null' or x == 'nan' else x
+            )
+
+        headers = inventory_df.columns.tolist()
+        data = inventory_df.values.tolist()
+
+        if not data:
+            logger.error("No data to save")
+            return False
+
+        try:
+            # Update in chunks without clearing first
+            self.worksheet.update('A1', [headers])
+            if data:
+                # Update in batches of 1000 rows
+                batch_size = 1000
+                for i in range(0, len(data), batch_size):
+                    batch = data[i:i + batch_size]
+                    self.worksheet.update(f'A{i+2}', batch)
+
+            # Format header row
+            self.worksheet.format('A1:Z1', {
+                "backgroundColor": {"red": 0.0, "green": 0.443, "blue": 0.729},
+                "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}
+            })
+
+            st.session_state['last_save_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logger.info("Successfully saved inventory to Google Sheets")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error during save: {str(e)}")
+            # Attempt to restore from backup if save failed
+            if backup_data:
+                try:
+                    backup_headers = list(backup_data[0].keys())
+                    backup_values = [list(d.values()) for d in backup_data]
+                    self.worksheet.clear()
+                    self.worksheet.update('A1', [backup_headers])
+                    self.worksheet.update('A2', backup_values)
+                    st.error("Save failed, restored previous data")
+                except Exception as restore_error:
+                    logger.error(f"Restore failed: {str(restore_error)}")
+                    st.error("⚠️ Critical: Save failed and restore failed. Please contact support.")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error saving inventory: {str(e)}")
+        st.error(f"Failed to save inventory: {str(e)}")
+        return False
 
     def create_backup(self):
         """Create a backup worksheet."""
