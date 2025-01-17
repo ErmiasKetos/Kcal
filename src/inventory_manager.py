@@ -267,3 +267,12 @@ class InventoryManager:
             except Exception as e:
                 logger.error(f"Error adding new probe: {str(e)}")
                 return False
+
+    def verify_connection(self):
+        """Verify connection to Google Sheets."""
+        try:
+            self.worksheet.get_all_values()
+            return True
+        except Exception as e:
+            logger.error(f"Connection verification failed: {str(e)}")
+            return False
