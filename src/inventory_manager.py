@@ -228,29 +228,45 @@ class InventoryManager:
             return None
 
     def add_new_probe(self, probe_data):
-        """Add a new probe to the inventory."""
-        try:
-            probe_data['Entry Date'] = datetime.now().strftime('%Y-%m-%d')
-            probe_data['Last Modified'] = datetime.now().strftime('%Y-%m-%d')
-            probe_data['Change Date'] = datetime.now().strftime('%Y-%m-%d')
-            probe_data['Status'] = 'Instock'
+    """Add a new probe to the inventory."""
+    try:
+        # Set required dates
+        probe_data['Entry Date'] = datetime.now().strftime('%Y-%m-%d')
+        probe_data['Last Modified'] = datetime.now().strftime('%Y-%m-%d')
+        probe_data['Change Date'] = datetime.now().strftime('%Y-%m-%d')
+        probe_data['Status'] = 'Instock'
+        
+        # Ensure empty calibration data is properly formatted
+        if 'Calibration Data' not in probe_data:
+            probe_data['Calibration Data'] = ''  # Empty string instead of empty dict
             
-            new_row_df = pd.DataFrame([probe_data])
-            st.session_state.inventory = pd.concat(
-                [st.session_state.inventory, new_row_df],
-                ignore_index=True
-            )
-            
-            return self.save_inventory(st.session_state.inventory)
-        except Exception as e:
-            logger.error(f"Error adding new probe: {str(e)}")
-            return False
-
-    def verify_connection(self):
-        """Verify connection to Google Sheets."""
-        try:
-            self.worksheet.get_all_values()
-            return True
-        except Exception as e:
-            logger.error(f"Connection verification failed: {str(e)}")
-            return False
+        # Ensure all required columns exist with proper empty values
+        required_columns = [
+            "Serial Number", "Type", "Manufacturer", "KETOS P/N",
+            "Mfg P/N", "Next Calibration", "Status", "Entry Date",
+            "Last Modified", "Change Date", "Registered By", "Calibrated By",
+            "Calibration Data"
+        ]
+        
+        for col in required_columns:
+            if col not in probe_data:
+                probe_data[col] = ''
+        
+        new_row_df = pd.DataFrame([probe_data])
+        
+        # Ensure all columns match existing inventory
+        if not st.session_state.inventory.empty:
+            for col in st.session_state.inventory.columns:
+                if col not in new_row_df.columns:
+                    new_row_df[col] = ''
+            new_row_df = new_row_df[st.session_state.inventory.columns]
+        
+        st.session_state.inventory = pd.concat(
+            [st.session_state.inventory, new_row_df],
+            ignore_index=True
+        )
+        
+        return self.save_inventory(st.session_state.inventory)
+    except Exception as e:
+        logger.error(f"Error adding new probe: {str(e)}")
+        return False
