@@ -485,7 +485,7 @@ def render_ph_calibration():
             # Add slope field for pH 10
             if buffer['name'] == "pH 10":
                 ph_data['slope_mv_10'] = st.number_input(
-                    "Slope (mV/pH)",
+                    "Slope (%)",
                     min_value=-65.0,
                     max_value=-45.0,
                     value=-59.2,
@@ -494,12 +494,12 @@ def render_ph_calibration():
                     key="slope_10"
                 )
                 if ph_data['slope_mv_10'] > -50 or ph_data['slope_mv_10'] < -62:
-                    st.warning("⚠️ pH 10 Slope is outside optimal range (-62 to -50 mV/pH)")
+                    st.warning("⚠️ pH 10 Slope is outside optimal range (95 to 100 %)")
 
             # Add slope field after pH 4 measurements
             if buffer['name'] == "pH 4":
                 ph_data['slope_mv'] = st.number_input(
-                    "Slope (mV/pH)",
+                    "Slope (%)",
                     min_value=-65.0,
                     max_value=-45.0,
                     value=-59.2,
@@ -507,7 +507,7 @@ def render_ph_calibration():
                     help="Theoretical value is -59.2 mV/pH at 25°C"
                 )
                 if ph_data['slope_mv'] > -50 or ph_data['slope_mv'] < -62:
-                    st.warning("⚠️ Slope is outside optimal range (-62 to -50 mV/pH)")
+                    st.warning("⚠️ Slope is outside optimal range (95 to 100%)")
 
         st.markdown("---")
 
@@ -673,8 +673,8 @@ def render_do_calibration():
             else:
                 temp = do_data['temperature']
                 if 20 <= temp <= 30:
-                    if not (8.2 <= do_data[f'{prefix}_final'] <= 8.7):
-                        st.warning("⚠️ Saturation reading is outside expected range (8.2-8.7 mg/L)")
+                    if not (9.2 <= do_data[f'{prefix}_final'] <= 9.7):
+                        st.warning("⚠️ Saturation reading is outside expected range (9.2-9.7 mg/L)")
 
         st.markdown("---")
 
